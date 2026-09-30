@@ -28,23 +28,35 @@
 
 ### ตั้งค่าครั้งแรก
 
-**1) เตรียมฐานข้อมูล** — รัน schema กับ MySQL ของคุณ:
+**1) ติดตั้งและตั้งค่าการเชื่อมต่อ:**
 
 ```bash
-mysql -h <host> -u <user> -p <database> < sql/schema.sql
+npm install
+cp .env.example .env   # แล้วกรอก DB_HOST, DB_USER, DB_PASSWORD, DB_NAME ให้ครบ
 ```
 
-**2) นำเข้าข้อมูลปัจจุบัน** (ถ้ามี `data/db.json` อยู่แล้วจากโหมด local):
+**2) สร้างตารางในฐานข้อมูล** — ไม่ต้องมี `mysql` CLI ติดตั้งในเครื่อง สคริปต์นี้ใช้
+แพ็กเกจ `mysql2` ที่ลงไว้แล้วจากขั้นตอนที่ 1 เชื่อมต่อโดยตรง:
 
 ```bash
-cp .env.example .env   # แล้วกรอกค่าให้ครบ (ดูหัวข้อ environment variables ด้านล่าง)
-npm install
+node scripts/apply-schema.js
+```
+
+รันซ้ำได้เรื่อย ๆ ไม่มีปัญหา (ใช้ `CREATE TABLE IF NOT EXISTS`)
+
+**3) นำเข้าข้อมูลปัจจุบัน** (ถ้ามี `data/db.json` อยู่แล้วจากโหมด local):
+
+```bash
 node scripts/migrate-from-json.js data/db.json
 ```
 
-ถ้ายังไม่มีข้อมูลเลย ใช้ `data/seed.json` แทนได้ (ข้อมูลตั้งต้นจากเอกสารทางการ)
+ถ้ายังไม่มีข้อมูลเลย ใช้ `data/seed.json` แทนได้ (ข้อมูลตั้งต้นจากเอกสารทางการ):
 
-**3) สร้างรหัสผ่านผู้ดูแล:**
+```bash
+node scripts/migrate-from-json.js data/seed.json
+```
+
+**4) สร้างรหัสผ่านผู้ดูแล:**
 
 ```bash
 node scripts/hash-password.js "รหัสผ่านที่ต้องการ"
@@ -53,7 +65,7 @@ node scripts/hash-password.js "รหัสผ่านที่ต้องก�
 จะได้ `ADMIN_SALT` และ `ADMIN_HASH` มาใส่เป็น environment variable (รหัสผ่านจริง
 ไม่ถูกเก็บไว้ที่ไหนเลย มีแต่ hash)
 
-**4) Deploy ขึ้น Vercel:**
+**5) Deploy ขึ้น Vercel:**
 
 - Push โค้ดนี้ขึ้น GitHub repo ของคุณ
 - สร้าง Vercel project ใหม่ แล้วเชื่อมกับ repo นั้น (Vercel จะ auto-detect
