@@ -1,0 +1,635 @@
+{
+  "rev": 1,
+  "meta": {
+    "title": "WRG 2026 Japan",
+    "subtitle": "WRG Robot Games 2026 · Chiba, Japan",
+    "dates": "16–20 พฤศจิกายน 2569 (ออกเดินทาง 15 พ.ย.)",
+    "venue": "Chiba Port Arena, Japan",
+    "venueAwarding": "Chiba Culture Center",
+    "hotel": "THE QUBE HOTEL CHIBA",
+    "airline": "ไทยแอร์เอเชีย เอ็กซ์ (XJ)",
+    "flightOut": "XJ602 · ดอนเมือง 02:35 → นาริตะ 10:45 (16 พ.ย.)",
+    "flightBack": "XJ607 · นาริตะ 21:15 → ดอนเมือง 02:45 (21 พ.ย.)",
+    "timezoneNote": "เวลาท้องถิ่นญี่ปุ่นเร็วกว่าประเทศไทย 2 ชั่วโมง",
+    "departISO": "2026-11-15T22:30:00+07:00",
+    "organizer": "INEX Innovative Experiment"
+  },
+  "announcements": [
+    {
+      "id": "seed-welcome",
+      "title": "เว็บไซต์ตารางทีม WRG2026 พร้อมใช้งานแล้ว",
+      "body": "ตารางการแข่งขัน กำหนดการเดินทาง และข้อมูลทั้ง 2 ทีม (Soccer 4x4 และ Ball Fighting) ถูกนำเข้าระบบเรียบร้อยแล้ว\n\nกดปุ่ม \"เปิดการแจ้งเตือน\" ด้านบนเพื่อรับแจ้งเตือนทันทีเมื่อมีการอัปเดต",
+      "level": "info",
+      "teams": [
+        "all"
+      ],
+      "pinned": true,
+      "createdAt": "2026-09-29T00:00:00.000Z",
+      "updatedAt": "2026-09-29T00:00:00.000Z"
+    },
+    {
+      "id": "seed-schedule-warning",
+      "title": "ตารางแข่งอาจเปลี่ยนแปลงได้",
+      "body": "ผู้จัดระบุว่าตารางการแข่งขันอาจเปลี่ยนตามจำนวนผู้เข้าแข่งขัน กรุณาตรวจสอบตารางอย่างเป็นทางการหน้างานในวันแข่งอีกครั้ง\n\nหากมีการเปลี่ยนแปลง จะแจ้งผ่านหน้านี้ทันที",
+      "level": "important",
+      "teams": [
+        "all"
+      ],
+      "pinned": false,
+      "createdAt": "2026-09-29T00:01:00.000Z",
+      "updatedAt": "2026-09-29T00:01:00.000Z"
+    }
+  ],
+  "teams": {
+    "soccer4x4": {
+      "key": "soccer4x4",
+      "name": "Soccer 4x4",
+      "nameTh": "ฟุตบอลหุ่นยนต์ 4x4",
+      "code": "",
+      "color": "#1d6ce2",
+      "gameDay": "18 พ.ย. 2569 · GAME DAY 02",
+      "arena": "Chiba Port Arena",
+      "summary": "แข่งวันที่ 18 พ.ย. เต็มวัน — รอบแรกเริ่ม 09:00 ต่อเนื่องถึงบ่าย และรอบน็อกเอาท์ถึงรอบชิงเริ่ม 15:30",
+      "members": [],
+      "matches": [
+        {
+          "id": "s1",
+          "date": "2026-11-18",
+          "time": "09:00–12:00",
+          "label": "Soccer 4x4 — First round",
+          "status": "scheduled",
+          "note": "รอบแรก ช่วงเช้า"
+        },
+        {
+          "id": "s2",
+          "date": "2026-11-18",
+          "time": "12:30–14:30",
+          "label": "Soccer 4x4 — First round (continue)",
+          "status": "scheduled",
+          "note": "ต่อเนื่องหลังพักกลางวัน"
+        },
+        {
+          "id": "s3",
+          "date": "2026-11-18",
+          "time": "15:30–17:30",
+          "label": "Soccer 4x4 — Knock out → Final",
+          "status": "scheduled",
+          "note": "รอบน็อกเอาท์และรอบชิงชนะเลิศ"
+        },
+        {
+          "id": "s4",
+          "date": "2026-11-19",
+          "time": "09:30–12:00",
+          "label": "Awarding & Closing Ceremony",
+          "status": "scheduled",
+          "note": "@Chiba Culture Center"
+        }
+      ],
+      "checklist": [
+        {
+          "id": "sc1",
+          "text": "หุ่นยนต์ + อะไหล่สำรอง",
+          "done": false,
+          "tag": ""
+        },
+        {
+          "id": "sc2",
+          "text": "แบตเตอรี่ + ที่ชาร์จ (หิ้วขึ้นเครื่องเท่านั้น)",
+          "done": false,
+          "tag": "carry"
+        },
+        {
+          "id": "sc3",
+          "text": "โน้ตบุ๊ก + สาย USB สำหรับอัปโหลดโค้ด",
+          "done": false,
+          "tag": ""
+        },
+        {
+          "id": "sc4",
+          "text": "ไขควง / เครื่องมือช่าง (โหลดใต้เครื่อง)",
+          "done": false,
+          "tag": "cargo"
+        }
+      ]
+    },
+    "ballfighting": {
+      "key": "ballfighting",
+      "name": "Ball Fighting",
+      "nameTh": "บอลไฟท์ติง",
+      "code": "",
+      "color": "#e04e39",
+      "gameDay": "17 พ.ย. 2569 · GAME DAY 01",
+      "arena": "Chiba Port Arena",
+      "summary": "แข่งวันที่ 17 พ.ย. เต็มวัน — รอบแรกเริ่ม 09:30 ต่อหลังพักกลางวัน และรอบชิงชนะเลิศเริ่ม 15:00",
+      "members": [],
+      "matches": [
+        {
+          "id": "b1",
+          "date": "2026-11-17",
+          "time": "09:30–12:00",
+          "label": "Ball Fighting — First round",
+          "status": "scheduled",
+          "note": "รอบแรก ช่วงเช้า"
+        },
+        {
+          "id": "b2",
+          "date": "2026-11-17",
+          "time": "13:30–14:30",
+          "label": "Ball Fighting — First round (continue)",
+          "status": "scheduled",
+          "note": "ต่อเนื่องหลังพักกลางวัน"
+        },
+        {
+          "id": "b3",
+          "date": "2026-11-17",
+          "time": "15:00–17:30",
+          "label": "Ball Fighting — Continue → Final",
+          "status": "scheduled",
+          "note": "รอบชิงชนะเลิศ"
+        },
+        {
+          "id": "b4",
+          "date": "2026-11-17",
+          "time": "18:30",
+          "label": "Mini awarding #1",
+          "status": "scheduled",
+          "note": "มอบรางวัลย่อยของ Game Day 01"
+        },
+        {
+          "id": "b5",
+          "date": "2026-11-19",
+          "time": "09:30–12:00",
+          "label": "Awarding & Closing Ceremony",
+          "status": "scheduled",
+          "note": "@Chiba Culture Center"
+        }
+      ],
+      "checklist": [
+        {
+          "id": "bc1",
+          "text": "หุ่นยนต์ + อะไหล่สำรอง",
+          "done": false,
+          "tag": ""
+        },
+        {
+          "id": "bc2",
+          "text": "แบตเตอรี่ + ที่ชาร์จ (หิ้วขึ้นเครื่องเท่านั้น)",
+          "done": false,
+          "tag": "carry"
+        },
+        {
+          "id": "bc3",
+          "text": "โน้ตบุ๊ก + สาย USB สำหรับอัปโหลดโค้ด",
+          "done": false,
+          "tag": ""
+        },
+        {
+          "id": "bc4",
+          "text": "ไขควง / เครื่องมือช่าง (โหลดใต้เครื่อง)",
+          "done": false,
+          "tag": "cargo"
+        }
+      ]
+    }
+  },
+  "itinerary": [
+    {
+      "date": "2026-11-15",
+      "label": "15 พ.ย.",
+      "title": "ออกเดินทางสู่ประเทศญี่ปุ่น",
+      "items": [
+        {
+          "time": "22:30",
+          "text": "พร้อมกัน ณ สนามบินดอนเมือง อาคารผู้โดยสารขาออกระหว่างประเทศ ชั้น 4 ประตู 1 — น้ำหนักกระเป๋าเดินทาง 20 กก. / กระเป๋าถือขึ้นเครื่อง 7 กก. (ไม่มีบริการอาหารและเครื่องดื่มบนเครื่อง)"
+        },
+        {
+          "time": "23:30",
+          "text": "ถ่ายภาพหมู่ร่วมกัน"
+        }
+      ]
+    },
+    {
+      "date": "2026-11-16",
+      "label": "16 พ.ย.",
+      "title": "ถึงที่หมาย แวะเที่ยววัดนาริตะซัน และเข้าที่พัก",
+      "items": [
+        {
+          "time": "02:35",
+          "text": "ออกเดินทางจากดอนเมือง โดยเที่ยวบิน XJ602 (ใช้เวลาประมาณ 6.30 ชั่วโมง)"
+        },
+        {
+          "time": "10:45",
+          "text": "ถึงสนามบินนาริตะ (เวลาท้องถิ่นเร็วกว่าไทย 2 ชั่วโมง) ผ่านศุลกากรและตรวจคนเข้าเมือง รับสัมภาระ พบไกด์ท้องถิ่น แบ่งคณะออกเป็น 3 บัส"
+        },
+        {
+          "time": "12:30",
+          "text": "รับประทานอาหารกลางวัน ณ ภัตตาคาร (มื้อที่ 1)"
+        },
+        {
+          "time": "13:30",
+          "text": "เดินทางสู่ “วัดนาริตะซัน” วัดประจำเมืองนาริตะ นมัสการสิ่งศักดิ์สิทธิ์เพื่อความเป็นสิริมงคล"
+        },
+        {
+          "time": "15:00",
+          "text": "เดินทางเข้าที่พัก — THE QUBE HOTEL CHIBA"
+        }
+      ]
+    },
+    {
+      "date": "2026-11-17",
+      "label": "17 พ.ย.",
+      "title": "แข่งขันหุ่นยนต์ วันที่ 1 — WRG2026 Japan",
+      "items": [
+        {
+          "time": "เช้า",
+          "text": "รับประทานอาหารเช้า ณ ห้องอาหารของโรงแรม"
+        },
+        {
+          "time": "08:30",
+          "text": "เดินทางเข้าร่วม WRG2026 Japan ที่ Chiba Port Arena"
+        },
+        {
+          "time": "เที่ยง",
+          "text": "รับประทานอาหารกลางวัน (Lunch Box)"
+        },
+        {
+          "time": "บ่าย",
+          "text": "แข่งขัน (ต่อ)"
+        },
+        {
+          "time": "18:00",
+          "text": "รับประทานอาหารค่ำ ณ โรงแรมที่พัก"
+        }
+      ]
+    },
+    {
+      "date": "2026-11-18",
+      "label": "18 พ.ย.",
+      "title": "แข่งขันหุ่นยนต์ วันที่ 2 — WRG2026 Japan",
+      "items": [
+        {
+          "time": "เช้า",
+          "text": "รับประทานอาหารเช้า ณ ห้องอาหารของโรงแรม"
+        },
+        {
+          "time": "เที่ยง",
+          "text": "รับประทานอาหารกลางวัน (Lunch Box)"
+        },
+        {
+          "time": "บ่าย",
+          "text": "แข่งขัน (ต่อ)"
+        },
+        {
+          "time": "17:30",
+          "text": "จบการแข่งขัน WRG2026 Japan"
+        },
+        {
+          "time": "18:00",
+          "text": "รับประทานอาหารค่ำ ณ โรงแรมที่พัก"
+        }
+      ]
+    },
+    {
+      "date": "2026-11-19",
+      "label": "19 พ.ย.",
+      "title": "พิธีมอบรางวัล WRG2026 Japan",
+      "items": [
+        {
+          "time": "เช้า",
+          "text": "รับประทานอาหารเช้า ณ ห้องอาหารของโรงแรม"
+        },
+        {
+          "time": "08:30",
+          "text": "ออกเดินทาง"
+        },
+        {
+          "time": "09:00",
+          "text": "ร่วมพิธีมอบรางวัล WRG2026 Japan"
+        },
+        {
+          "time": "12:00",
+          "text": "จบพิธีการมอบรางวัล จากนั้นพักผ่อนและท่องเที่ยวในเมืองชิบะ หรือ โตเกียว ได้ตามอัธยาศัย"
+        }
+      ]
+    },
+    {
+      "date": "2026-11-20",
+      "label": "20 พ.ย.",
+      "title": "ท่องเที่ยวทัศนศึกษา และเดินทางกลับ",
+      "items": [
+        {
+          "time": "07:00",
+          "text": "รับประทานอาหารเช้า ณ ห้องอาหารโรงแรมที่พัก"
+        },
+        {
+          "time": "08:00",
+          "text": "เช็คเอ้าท์ออกจากโรงแรม (กรุณาตรวจสอบสัมภาระให้เรียบร้อย)"
+        },
+        {
+          "time": "08:30",
+          "text": "ออกเดินทางสู่ “พิพิธภัณฑ์ธรรมชาติและวิทยาศาสตร์แห่งชาติ โตเกียว”"
+        },
+        {
+          "time": "12:30",
+          "text": "รับประทานอาหารกลางวัน ณ ภัตตาคาร"
+        },
+        {
+          "time": "16:30",
+          "text": "เดินทางสู่สนามบินนาริตะ"
+        },
+        {
+          "time": "21:15",
+          "text": "เดินทางออกจากสนามบินนาริตะ โดยเที่ยวบิน XJ607"
+        },
+        {
+          "time": "02:45",
+          "text": "ถึงสนามบินดอนเมือง กรุงเทพฯ โดยสวัสดิภาพ (เช้ามืดวันที่ 21 พ.ย.)"
+        }
+      ]
+    }
+  ],
+  "schedule": [
+    {
+      "date": "2026-11-16",
+      "label": "16 พ.ย.",
+      "tag": "PRACTICE DAY",
+      "venue": "Chiba Port Arena",
+      "rows": [
+        {
+          "time": "09:00–15:30",
+          "event": "Arena setting",
+          "highlight": ""
+        },
+        {
+          "time": "15:30–20:30",
+          "event": "Open arena for practice",
+          "highlight": ""
+        }
+      ]
+    },
+    {
+      "date": "2026-11-17",
+      "label": "17 พ.ย.",
+      "tag": "GAME DAY 01",
+      "venue": "Chiba Port Arena",
+      "rows": [
+        {
+          "time": "09:00–09:30",
+          "event": "Innovative robot Installation",
+          "highlight": ""
+        },
+        {
+          "time": "09:00–09:30",
+          "event": "SumoBOT Family (Final)",
+          "highlight": ""
+        },
+        {
+          "time": "09:30–12:00",
+          "event": "Ball Fighting (First round)",
+          "highlight": "ballfighting"
+        },
+        {
+          "time": "09:30–11:00",
+          "event": "SumoBOT Junior (First Round)",
+          "highlight": ""
+        },
+        {
+          "time": "09:30–12:00",
+          "event": "BEAM Battle (First round)",
+          "highlight": ""
+        },
+        {
+          "time": "11:00–12:30",
+          "event": "SumoBOT SR-ADV (1st to Final)",
+          "highlight": ""
+        },
+        {
+          "time": "12:00–13:00",
+          "event": "Lunch break",
+          "highlight": ""
+        },
+        {
+          "time": "13:00–13:30",
+          "event": "Open ceremony",
+          "highlight": ""
+        },
+        {
+          "time": "13:30–14:30",
+          "event": "Ball Fighting (First round - continue)",
+          "highlight": "ballfighting"
+        },
+        {
+          "time": "13:30–15:00",
+          "event": "SumoBOT Senior (First Round)",
+          "highlight": ""
+        },
+        {
+          "time": "13:30–15:00",
+          "event": "BEAM Battle (Final)",
+          "highlight": ""
+        },
+        {
+          "time": "15:00–18:30",
+          "event": "Innovative robot presentation",
+          "highlight": ""
+        },
+        {
+          "time": "15:00–17:30",
+          "event": "Ball Fighting (continue - Final)",
+          "highlight": "ballfighting"
+        },
+        {
+          "time": "15:00–15:30",
+          "event": "SumoBOT Senior (Final)",
+          "highlight": ""
+        },
+        {
+          "time": "15:30–16:00",
+          "event": "SumoBOT JR (Final)",
+          "highlight": ""
+        },
+        {
+          "time": "16:00–16:30",
+          "event": "SumoBOT JR-ADV",
+          "highlight": ""
+        },
+        {
+          "time": "16:30–17:30",
+          "event": "SumoBOT STEM (Final)",
+          "highlight": ""
+        },
+        {
+          "time": "15:00–18:30",
+          "event": "iBEAM Junior / Line Formula Senior",
+          "highlight": ""
+        },
+        {
+          "time": "15:00–18:30",
+          "event": "OMG-Shoot The Ball robot / ArTec Shoot The Ball",
+          "highlight": ""
+        },
+        {
+          "time": "15:00–18:30",
+          "event": "OMG-Move The Can Robot / ArTec Move The Can",
+          "highlight": ""
+        },
+        {
+          "time": "15:00–18:30",
+          "event": "OMG-Carry The Cube / ArTec Carry The Cube",
+          "highlight": ""
+        },
+        {
+          "time": "18:30",
+          "event": "Mini awarding #1",
+          "highlight": ""
+        },
+        {
+          "time": "19:00–21:00",
+          "event": "Dinner & Free Time (พักผ่อนได้จนกว่าสนามจะปิด)",
+          "highlight": ""
+        }
+      ]
+    },
+    {
+      "date": "2026-11-18",
+      "label": "18 พ.ย.",
+      "tag": "GAME DAY 02",
+      "venue": "Chiba Port Arena",
+      "rows": [
+        {
+          "time": "09:00–12:00",
+          "event": "Incredible Machine installation",
+          "highlight": ""
+        },
+        {
+          "time": "09:00–12:00",
+          "event": "Soccer 4x4 (First round - continue)",
+          "highlight": "soccer4x4"
+        },
+        {
+          "time": "09:00–10:30",
+          "event": "SumoBOT JR Basic (First Round)",
+          "highlight": ""
+        },
+        {
+          "time": "10:30–12:00",
+          "event": "SumoBOT JR Basic RC (First Round)",
+          "highlight": ""
+        },
+        {
+          "time": "10:30–12:00",
+          "event": "K-BEAM / ArTec Line Tracing Challenge",
+          "highlight": ""
+        },
+        {
+          "time": "12:00–12:30",
+          "event": "Lunch break",
+          "highlight": ""
+        },
+        {
+          "time": "12:30–14:30",
+          "event": "Soccer 4x4 (First round - continue)",
+          "highlight": "soccer4x4"
+        },
+        {
+          "time": "12:30–13:00",
+          "event": "SumoBOT JR Basic (Final)",
+          "highlight": ""
+        },
+        {
+          "time": "13:00–13:30",
+          "event": "SumoBOT JR Basic RC (Final)",
+          "highlight": ""
+        },
+        {
+          "time": "13:30–15:00",
+          "event": "SumoBOT SR-RC (First round)",
+          "highlight": ""
+        },
+        {
+          "time": "12:30–14:30",
+          "event": "K-BEAM / ArTec Line Tracing (continue - finish)",
+          "highlight": ""
+        },
+        {
+          "time": "15:00–18:30",
+          "event": "Incredible Machine presentation",
+          "highlight": ""
+        },
+        {
+          "time": "15:30–17:30",
+          "event": "Soccer 4x4 (Knock out - Final)",
+          "highlight": "soccer4x4"
+        },
+        {
+          "time": "15:00–15:30",
+          "event": "SumoBOT SR-RC (continue - Final)",
+          "highlight": ""
+        },
+        {
+          "time": "15:30–17:00",
+          "event": "SumoBOT JR-RC (First round - Final)",
+          "highlight": ""
+        },
+        {
+          "time": "15:00–18:30",
+          "event": "iBEAM Senior / Line Formula Junior",
+          "highlight": ""
+        },
+        {
+          "time": "15:00–18:30",
+          "event": "OMG-Carry The Ball Robot / ArTec Carry The Ball Robot",
+          "highlight": ""
+        },
+        {
+          "time": "15:00–18:30",
+          "event": "OMG-Hit The Box Robot / ArTec Hit The Box Robot",
+          "highlight": ""
+        },
+        {
+          "time": "15:00–18:30",
+          "event": "OMG-Lift The Cube Robot / ArTec Lift The Cube Robot",
+          "highlight": ""
+        },
+        {
+          "time": "16:30",
+          "event": "Mini awarding #2",
+          "highlight": ""
+        },
+        {
+          "time": "18:30–21:00",
+          "event": "Banquet & Free Time (พักผ่อนได้จนกว่าสนามจะปิด)",
+          "highlight": ""
+        }
+      ]
+    },
+    {
+      "date": "2026-11-19",
+      "label": "19 พ.ย.",
+      "tag": "AWARDING DAY",
+      "venue": "Chiba Culture Center",
+      "rows": [
+        {
+          "time": "09:30–11:00",
+          "event": "Awarding",
+          "highlight": "both"
+        },
+        {
+          "time": "11:00–12:00",
+          "event": "Closing Ceremony",
+          "highlight": "both"
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "รายการอาจเปลี่ยนแปลงได้ตามความเหมาะสม เนื่องจากสภาวะอากาศ การเมือง สายการบิน เป็นต้น",
+    "ตารางแข่งขันอาจเปลี่ยนตามจำนวนผู้เข้าแข่งขัน — ผู้จัดจะแจ้งล่วงหน้าเท่าที่ทำได้ กรุณาตรวจสอบตารางอย่างเป็นทางการหน้างานอีกครั้ง",
+    "ห้องพัก: บริษัทฯ ขอสงวนสิทธิ์ในการจัดห้องพักตามความเหมาะสม เช่น แยกตามเพศสภาพ และมาจากสังกัดเดียวกัน",
+    "ห้องพักสำหรับ 2 ท่าน หากสมาชิกจากสังกัดเดียวกันมีจำนวนไม่ลงตัว ขอสงวนสิทธิ์จัดให้พักร่วมกับสมาชิกจากสังกัดอื่น"
+  ],
+  "travel": {
+    "note": "หลังพิธีปิด 19 พ.ย. เวลา 12:00 น. เป็นต้นไป ทุกคนอิสระท่องเที่ยวได้ตามอัธยาศัย ก่อนกลับเข้าที่พัก THE QUBE HOTEL CHIBA คืนนั้น (เช้าวันที่ 20 พ.ย. มีทัวร์พิพิธภัณฑ์ธรรมชาติฯ ที่โตเกียวต่อ ต้องพร้อมออกจากโรงแรม 08:30) แผนเที่ยวเต็มดูได้ที่ลิงก์ด้านล่าง",
+    "wanderlogUrl": "https://wanderlog.com/view/ampmznzipb/competition-trip/shared"
+  }
+}

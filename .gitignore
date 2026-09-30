@@ -1,0 +1,8 @@
+node_modules/
+.env
+.vercel
+
+# legacy local-file mode (see README) — real trip data shouldn't be committed
+data/db.json
+data/admin.json
+data/FIRST-RUN-PASSWORD.txt

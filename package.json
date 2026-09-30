@@ -1,0 +1,17 @@
+{
+  "name": "wrg2026-japan-team",
+  "version": "2.0.0",
+  "description": "ตารางแข่งและอัปเดตทีม WRG2026 Japan — Soccer 4x4 & Ball Fighting (Vercel + MySQL)",
+  "private": true,
+  "scripts": {
+    "hash-password": "node scripts/hash-password.js",
+    "migrate": "node scripts/migrate-from-json.js",
+    "dev:legacy": "node server.js"
+  },
+  "dependencies": {
+    "mysql2": "^3.11.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
