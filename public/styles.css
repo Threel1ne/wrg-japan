@@ -694,6 +694,10 @@ main.container { padding-top: 24px; padding-bottom: 8px; }
 .wanderlog-card-arrow .ic { width: 20px; height: 20px; }
 .wanderlog-card:hover .wanderlog-card-arrow { color: var(--brand); }
 
+.drive-embed-card { padding: 0; overflow: hidden; }
+.drive-embed { width: 100%; height: 480px; border: 0; display: block; }
+@media (max-width: 600px) { .drive-embed { height: 60vh; } }
+
 /* ----------------------------------------------------------- announcements */
 
 .post {

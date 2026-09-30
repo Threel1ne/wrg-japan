@@ -841,6 +841,52 @@ function renderTravel() {
     </div>`;
 }
 
+/** Pulls a folder ID out of any common Google Drive share-link shape, or
+    passes through a bare ID if that's what was pasted. Returns '' if nothing
+    recognizable is found, rather than guessing. */
+function extractDriveFolderId(url) {
+  if (!url) return '';
+  const patterns = [
+    /\/folders\/([a-zA-Z0-9_-]{10,})/,   // .../drive/folders/<id>
+    /[?&]id=([a-zA-Z0-9_-]{10,})/,        // .../open?id=<id>
+  ];
+  for (const re of patterns) {
+    const m = url.match(re);
+    if (m) return m[1];
+  }
+  if (/^[a-zA-Z0-9_-]{10,}$/.test(url.trim())) return url.trim(); // bare ID
+  return '';
+}
+
+function renderFiles() {
+  const f = state.files || { note: '', driveFolderUrl: '' };
+  const folderId = extractDriveFolderId(f.driveFolderUrl);
+  return `
+    <div class="section">
+      <div class="section-head">
+        <h2>${icon('folder')}ไฟล์เอกสาร</h2>
+        <div class="head-actions">
+          <button class="btn outline sm admin-only" data-edit-json="files">${icon('edit')}แก้ไข</button>
+        </div>
+      </div>
+      ${f.note ? `<div class="card" style="margin-bottom:16px"><p class="muted" style="color:var(--ink-2)">${esc(f.note)}</p></div>` : ''}
+      ${folderId ? `
+        <div class="card drive-embed-card">
+          <iframe class="drive-embed" src="https://drive.google.com/embeddedfolderview?id=${esc(folderId)}#grid"
+            loading="lazy" title="โฟลเดอร์ไฟล์เอกสารทริป"></iframe>
+        </div>
+        <a class="wanderlog-card" href="${esc(f.driveFolderUrl)}" target="_blank" rel="noopener noreferrer" style="margin-top:14px">
+          <span class="wanderlog-card-icon">${icon('folder')}</span>
+          <span class="wanderlog-card-body">
+            <span class="wanderlog-card-title">เปิดใน Google Drive</span>
+            <span class="wanderlog-card-sub">อัปโหลด/จัดการไฟล์ได้ที่นี่ — มุมมองด้านบนเป็นแบบดูอย่างเดียว</span>
+          </span>
+          <span class="wanderlog-card-arrow">${icon('chevron')}</span>
+        </a>`
+        : '<div class="card muted">ยังไม่ได้ตั้งค่าโฟลเดอร์ไฟล์</div>'}
+    </div>`;
+}
+
 function renderUpdates() {
   const seen = loadSeen();
   return `
@@ -891,6 +937,7 @@ function render() {
     view === 'timeline'  ? renderTimeline()  :
     view === 'itinerary' ? renderItinerary() :
     view === 'travel'    ? renderTravel()    :
+    view === 'files'     ? renderFiles()     :
     view === 'updates'   ? renderUpdates()   :
     state.teams[view]    ? renderTeam(view)  : renderOverview();
 
@@ -1285,6 +1332,7 @@ function openJsonEditor(kind, key) {
     itinerary: 'แก้ไขกำหนดการเดินทาง', schedule: 'แก้ไขตารางแข่งขัน',
     notes: 'แก้ไขหมายเหตุ', meta: 'แก้ไขข้อมูลทริป', team: 'แก้ไขข้อมูลทีม',
     travel: 'แก้ไขแผนเที่ยววันอิสระ',
+    files: 'แก้ไขโฟลเดอร์ไฟล์เอกสาร',
   };
   const hints = {
     team: 'แก้ไขสมาชิก (members), รายการแข่ง (matches) และเช็กลิสต์ (checklist) ได้ที่นี่',
@@ -1293,6 +1341,7 @@ function openJsonEditor(kind, key) {
     notes: 'รายการข้อความ (array ของ string)',
     meta: 'ข้อมูลหัวเรื่อง สนาม โรงแรม เที่ยวบิน และวันออกเดินทาง (departISO)',
     travel: 'มี note (ข้อความอธิบาย) และ wanderlogUrl (ลิงก์ทริปจาก Wanderlog — ตั้งค่าการแชร์เป็น "Anyone with the link can view" ก่อนคัดลอกลิงก์มาใส่)',
+    files: 'มี note (ข้อความอธิบาย) และ driveFolderUrl (ลิงก์โฟลเดอร์ Google Drive — ตั้งค่าการแชร์เป็น "Anyone with the link" ก่อน แล้ววางลิงก์แชร์ทั้งอันมาได้เลย ไม่ต้องตัดเอาแต่ ID)',
   };
   el('json-title').textContent = titles[kind] || 'แก้ไขข้อมูล';
   el('json-hint').textContent = hints[kind] || '';
