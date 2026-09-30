@@ -7,12 +7,17 @@
 
 | โหมด | ใช้เมื่อ | เก็บข้อมูลที่ |
 |---|---|---|
-| **Vercel + MySQL** (แนะนำสำหรับ production) | โฮสต์จริงให้ทีมเข้าถึงได้ทุกที่ | ฐานข้อมูล MySQL ของคุณเอง |
+| **Vercel + Supabase (Postgres)** (แนะนำสำหรับ production) | โฮสต์จริงให้ทีมเข้าถึงได้ทุกที่ | ฐานข้อมูล Postgres บน Supabase |
 | **Local server (legacy)** | ทดสอบเครื่องตัวเอง หรือใช้ในงานที่ Wi-Fi ไม่เสถียร/ไม่มีเน็ต | ไฟล์ `data/db.json` บนเครื่อง |
+
+> เคยลองใช้ MySQL บนเซิร์ฟเวอร์ของตัวเองมาก่อน แต่ติดปัญหา CGNAT (ISP บ้าน
+> แชร์ IP สาธารณะเดียวกันกับลูกค้าหลายคน ทำให้เชื่อมต่อเข้ามาจากอินเทอร์เน็ตไม่ได้
+> เลยไม่ว่าจะตั้งค่าไฟร์วอลล์ยังไง) จึงย้ายมาใช้ Supabase ซึ่งเป็น Postgres
+> แบบโฮสต์ให้พร้อมใช้ ไม่ติดปัญหาเครือข่ายบ้าน และมี free tier ที่เพียงพอสำหรับเว็บนี้
 
 ---
 
-## โหมดที่ 1: Vercel + MySQL (แนะนำ)
+## โหมดที่ 1: Vercel + Supabase (แนะนำ)
 
 ### ทำไมต้องเปลี่ยนจากไฟล์ JSON
 
@@ -23,20 +28,29 @@
 และการล็อกอินจะหลุดแบบสุ่ม เพราะ session เก็บไว้ในหน่วยความจำที่ไม่ได้แชร์กัน
 
 เว็บนี้จึงมีแบ็กเอนด์ชุดที่สอง (`/api/*.js` + `/lib/*.js`) ที่เก็บข้อมูลทั้งหมดใน
-ตาราง MySQL แทน และใช้ signed cookie สำหรับ session แทนหน่วยความจำ — ใช้งานได้ถูกต้อง
+ตาราง Postgres แทน และใช้ signed cookie สำหรับ session แทนหน่วยความจำ — ใช้งานได้ถูกต้อง
 บน serverless
 
 ### ตั้งค่าครั้งแรก
 
-**1) ติดตั้งและตั้งค่าการเชื่อมต่อ:**
+**1) สร้างโปรเจกต์ Supabase** (ฟรี) — สมัครที่ [supabase.com](https://supabase.com)
+สร้างโปรเจกต์ใหม่ แล้วไปที่ **Project → Connect** เพื่อดู connection string
+
+จะเจอ connection string 2 แบบ:
+- **Direct connection** (พอร์ต 5432) — ใช้สำหรับรันสคริปต์ setup ด้านล่างนี้
+- **Transaction pooler** (พอร์ต 6543) — ใช้สำหรับตัวเว็บจริงบน Vercel (serverless
+  function เปิด connection สั้น ๆ จำนวนมาก ถ้าใช้ direct connection แบบพอร์ต 5432
+  จะชนกับ connection limit ได้)
+
+**2) ติดตั้งและตั้งค่าการเชื่อมต่อ:**
 
 ```bash
 npm install
-cp .env.example .env   # แล้วกรอก DB_HOST, DB_USER, DB_PASSWORD, DB_NAME ให้ครบ
+cp .env.example .env   # แล้วกรอก DATABASE_URL (ใช้ direct connection พอร์ต 5432 สำหรับตอนนี้)
 ```
 
-**2) สร้างตารางในฐานข้อมูล** — ไม่ต้องมี `mysql` CLI ติดตั้งในเครื่อง สคริปต์นี้ใช้
-แพ็กเกจ `mysql2` ที่ลงไว้แล้วจากขั้นตอนที่ 1 เชื่อมต่อโดยตรง:
+**3) สร้างตารางในฐานข้อมูล** — ไม่ต้องมี `psql` CLI ติดตั้งในเครื่อง สคริปต์นี้ใช้
+แพ็กเกจ `pg` ที่ลงไว้แล้วจากขั้นตอนที่ 2 เชื่อมต่อโดยตรง:
 
 ```bash
 node scripts/apply-schema.js
@@ -44,7 +58,7 @@ node scripts/apply-schema.js
 
 รันซ้ำได้เรื่อย ๆ ไม่มีปัญหา (ใช้ `CREATE TABLE IF NOT EXISTS`)
 
-**3) นำเข้าข้อมูลปัจจุบัน** (ถ้ามี `data/db.json` อยู่แล้วจากโหมด local):
+**4) นำเข้าข้อมูลปัจจุบัน** (ถ้ามี `data/db.json` อยู่แล้วจากโหมด local):
 
 ```bash
 node scripts/migrate-from-json.js data/db.json
@@ -56,7 +70,7 @@ node scripts/migrate-from-json.js data/db.json
 node scripts/migrate-from-json.js data/seed.json
 ```
 
-**4) สร้างรหัสผ่านผู้ดูแล:**
+**5) สร้างรหัสผ่านผู้ดูแล:**
 
 ```bash
 node scripts/hash-password.js "รหัสผ่านที่ต้องการ"
@@ -65,15 +79,15 @@ node scripts/hash-password.js "รหัสผ่านที่ต้องก�
 จะได้ `ADMIN_SALT` และ `ADMIN_HASH` มาใส่เป็น environment variable (รหัสผ่านจริง
 ไม่ถูกเก็บไว้ที่ไหนเลย มีแต่ hash)
 
-**5) Deploy ขึ้น Vercel:**
+**6) Deploy ขึ้น Vercel:**
 
 - Push โค้ดนี้ขึ้น GitHub repo ของคุณ
 - สร้าง Vercel project ใหม่ แล้วเชื่อมกับ repo นั้น (Vercel จะ auto-detect
   `/api/*.js` เป็น serverless functions และเสิร์ฟ `/public` เป็นไฟล์ static
   โดยอัตโนมัติ ไม่ต้องตั้งค่า build command)
 - ใน Vercel → Project → Settings → Environment Variables ใส่ตัวแปรทั้งหมดจาก
-  `.env.example` (DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, DB_SSL,
-  ADMIN_SALT, ADMIN_HASH, SESSION_SECRET)
+  `.env.example` — **สำหรับ `DATABASE_URL` ในขั้นตอนนี้ ใช้ transaction pooler
+  (พอร์ต 6543) ไม่ใช่ direct connection** ที่ใช้ตอน setup
 - Deploy
 
 ### Environment variables
@@ -95,7 +109,7 @@ vercel dev
 
 ---
 
-## โหมดที่ 2: Local server (legacy — ไม่มี Vercel/MySQL)
+## โหมดที่ 2: Local server (legacy — ไม่มี Vercel/Supabase)
 
 เหมาะสำหรับทดสอบเร็ว ๆ หรือใช้ที่งานถ้า Wi-Fi ไม่เสถียร (รันบนโน้ตบุ๊กของคุณ
 แชร์ผ่าน Wi-Fi เดียวกัน ไม่ต้องพึ่งอินเทอร์เน็ต) — ไม่ต้อง `npm install`
@@ -122,8 +136,8 @@ node server.js --set-password "รหัสผ่านใหม่ของค�
 PORT=3000 node server.js
 ```
 
-> โหมดนี้กับโหมด Vercel+MySQL เก็บข้อมูลคนละที่กัน ไม่ sync กันอัตโนมัติ —
-> ใช้ `scripts/migrate-from-json.js` เพื่อย้ายข้อมูลจาก local ไป MySQL ตอนไหนก็ได้
+> โหมดนี้กับโหมด Vercel+Supabase เก็บข้อมูลคนละที่กัน ไม่ sync กันอัตโนมัติ —
+> ใช้ `scripts/migrate-from-json.js` เพื่อย้ายข้อมูลจาก local ไป Supabase ตอนไหนก็ได้
 
 ---
 
@@ -206,24 +220,24 @@ hostname -I
 ## โครงสร้างไฟล์
 
 ```
-api/                  Vercel serverless functions (โหมด Vercel+MySQL)
+api/                  Vercel serverless functions (โหมด Vercel+Supabase)
   state.js  rev.js  login.js  logout.js  announcements.js  team.js  section.js
-lib/                  โค้ดที่ใช้ร่วมกันของโหมด Vercel+MySQL
-  db.js                การเชื่อมต่อ MySQL + อ่าน/เขียนข้อมูล
+lib/                  โค้ดที่ใช้ร่วมกันของโหมด Vercel+Supabase
+  db.js                การเชื่อมต่อ Postgres + อ่าน/เขียนข้อมูล
   auth.js              เช็ครหัสผ่าน + signed-cookie session + rate limit
   helpers.js           ฟังก์ชันช่วยเล็ก ๆ (validation, ส่ง response)
   load-env.js          โหลดไฟล์ .env สำหรับทดสอบในเครื่อง (ไม่มีผลบน Vercel จริง)
 sql/
-  schema.sql           คำสั่งสร้างตาราง MySQL
+  schema.sql           คำสั่งสร้างตาราง Postgres
 scripts/
   hash-password.js     สร้าง ADMIN_SALT/ADMIN_HASH จากรหัสผ่านที่เลือก
-  migrate-from-json.js นำเข้าข้อมูลจากไฟล์ JSON เข้า MySQL
+  migrate-from-json.js นำเข้าข้อมูลจากไฟล์ JSON เข้า Postgres
 server.js             เซิร์ฟเวอร์โหมด local (legacy) — ไฟล์ JSON, Node stdlib ล้วน
 vercel.json           ตั้งค่า Vercel (timeout ของ function)
 .env.example          รายการ environment variable ที่ต้องตั้ง
 package.json
 data/
-  seed.json          ข้อมูลตั้งต้นจาก PDF ทั้ง 2 ไฟล์ (ห้ามแก้ — ใช้กู้คืน/นำเข้า MySQL)
+  seed.json          ข้อมูลตั้งต้นจาก PDF ทั้ง 2 ไฟล์ (ห้ามแก้ — ใช้กู้คืน/นำเข้า Postgres)
   db.json            ข้อมูลของโหมด local เท่านั้น (สร้างอัตโนมัติจาก seed ครั้งแรก)
 public/
   index.html         หน้าเว็บ + ชุดไอคอน SVG (sprite) ทั้งหมด — ใช้ร่วมกันทั้ง 2 โหมด
