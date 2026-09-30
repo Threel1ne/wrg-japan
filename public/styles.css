@@ -764,6 +764,14 @@ main.container { padding-top: 24px; padding-bottom: 8px; }
   margin-top: 9px; font-size: .77rem; color: var(--muted);
 }
 .post-body { margin-top: 10px; font-size: .9rem; color: var(--ink-2); white-space: pre-wrap; }
+.post-body a { text-decoration: underline; text-underline-offset: 2px; }
+.post-body code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .85em;
+  background: var(--brand-tint);
+  padding: 1px 5px;
+  border-radius: 5px;
+}
 
 .chip {
   display: inline-flex; align-items: center; gap: 5px;

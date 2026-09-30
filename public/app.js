@@ -10,6 +10,35 @@ function esc(s) {
   ));
 }
 
+/**
+ * Minimal markdown for announcement bodies: **bold**, *italic*, `code`,
+ * [label](url) links, and bare http(s) URLs auto-linked. Escapes HTML
+ * first, then only ever inserts tags it built itself — so no markdown
+ * span can escape into raw HTML.
+ */
+function renderMarkdown(raw) {
+  const links = [];
+  const stash = (html) => { links.push(html); return `\u0000${links.length - 1}\u0000`; };
+
+  let text = esc(raw)
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s()]+)\)/g, (_, label, url) => stash(
+      `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`
+    ))
+    .replace(/(https?:\/\/[^\s<]+)/g, (full) => {
+      const trailMatch = full.match(/[).,;:!?]+$/);
+      const trail = trailMatch ? trailMatch[0] : '';
+      const url = trail ? full.slice(0, -trail.length) : full;
+      return stash(`<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`) + trail;
+    })
+    .replace(/\*\*([^\n*]+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^\n*]+?)\*/g, '<em>$1</em>')
+    .replace(/`([^`\n]+?)`/g, '<code>$1</code>')
+    .replace(/\n/g, '<br>')
+    .replace(/\u0000(\d+)\u0000/g, (_, i) => links[Number(i)]);
+
+  return text;
+}
+
 /** All iconography is the SVG sprite in index.html — deliberately no emoji. */
 function icon(name, cls = '') {
   return `<svg class="ic ${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
@@ -185,7 +214,7 @@ function postHtml(post, seen) {
         </span>
       </div>
       <div class="post-meta">${teams}<span>${esc(relTime(post.updatedAt))}${edited}</span></div>
-      ${post.body ? `<div class="post-body">${esc(post.body)}</div>` : ''}
+      ${post.body ? `<div class="post-body">${renderMarkdown(post.body)}</div>` : ''}
     </article>`;
 }
 
