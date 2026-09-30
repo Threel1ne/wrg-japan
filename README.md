@@ -36,17 +36,18 @@
 **1) สร้างโปรเจกต์ Supabase** (ฟรี) — สมัครที่ [supabase.com](https://supabase.com)
 สร้างโปรเจกต์ใหม่ แล้วไปที่ **Project → Connect** เพื่อดู connection string
 
-จะเจอ connection string 2 แบบ:
-- **Direct connection** (พอร์ต 5432) — ใช้สำหรับรันสคริปต์ setup ด้านล่างนี้
-- **Transaction pooler** (พอร์ต 6543) — ใช้สำหรับตัวเว็บจริงบน Vercel (serverless
-  function เปิด connection สั้น ๆ จำนวนมาก ถ้าใช้ direct connection แบบพอร์ต 5432
-  จะชนกับ connection limit ได้)
+ใช้ **Transaction pooler** (พอร์ต 6543) เสมอ ทั้งตอน setup ในเครื่องและตอน deploy —
+**อย่าใช้ Direct connection (พอร์ต 5432)**: hostname ของ direct connection บน
+Supabase ชี้ไปที่ IPv6 อย่างเดียว ถ้าเน็ตบ้าน/ออฟฟิศไม่มี IPv6 ใช้งานได้ (พบได้บ่อย)
+จะต่อไม่ติดเลย ขึ้น error `ENETUNREACH` — ตัว pooler รองรับทั้ง IPv4/IPv6 และรองรับ
+serverless function ที่เปิด connection สั้น ๆ จำนวนมากได้ดีกว่าด้วย จึงใช้ตัวเดียว
+ได้ทั้งสองที่ ไม่ต้องสลับ
 
 **2) ติดตั้งและตั้งค่าการเชื่อมต่อ:**
 
 ```bash
 npm install
-cp .env.example .env   # แล้วกรอก DATABASE_URL (ใช้ direct connection พอร์ต 5432 สำหรับตอนนี้)
+cp .env.example .env   # แล้วกรอก DATABASE_URL ด้วย transaction pooler string
 ```
 
 **3) สร้างตารางในฐานข้อมูล** — ไม่ต้องมี `psql` CLI ติดตั้งในเครื่อง สคริปต์นี้ใช้
@@ -86,8 +87,7 @@ node scripts/hash-password.js "รหัสผ่านที่ต้องก�
   `/api/*.js` เป็น serverless functions และเสิร์ฟ `/public` เป็นไฟล์ static
   โดยอัตโนมัติ ไม่ต้องตั้งค่า build command)
 - ใน Vercel → Project → Settings → Environment Variables ใส่ตัวแปรทั้งหมดจาก
-  `.env.example` — **สำหรับ `DATABASE_URL` ในขั้นตอนนี้ ใช้ transaction pooler
-  (พอร์ต 6543) ไม่ใช่ direct connection** ที่ใช้ตอน setup
+  `.env.example` — ใช้ `DATABASE_URL` เดียวกับที่ใช้ตอน setup (transaction pooler)
 - Deploy
 
 ### Environment variables
