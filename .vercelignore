@@ -1,0 +1,10 @@
+# Keep the legacy local-file server and its setup-only tooling out of the
+# Vercel deployment entirely. Without this, Vercel's zero-config build was
+# picking up server.js and running it — it tried to copy data/seed.json to
+# data/db.json on Vercel's read-only filesystem and crashed every request
+# with EROFS. None of api/*.js ever requires any of these at runtime
+# (confirmed by grep before adding this file), so excluding them is safe.
+server.js
+data/
+sql/
+scripts/
