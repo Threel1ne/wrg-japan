@@ -11,6 +11,7 @@
 require('../lib/load-env');
 const fs = require('node:fs');
 const mysql = require('mysql2/promise');
+const { describeDbError } = require('../lib/describe-db-error');
 
 async function main() {
   const file = process.argv[2];
@@ -56,6 +57,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('Migration failed:', err.message);
+  console.error('Migration failed.\n');
+  console.error(describeDbError(err));
   process.exit(1);
 });

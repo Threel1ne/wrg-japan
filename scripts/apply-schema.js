@@ -10,6 +10,7 @@ require('../lib/load-env');
 const fs = require('node:fs');
 const path = require('node:path');
 const mysql = require('mysql2/promise');
+const { describeDbError } = require('../lib/describe-db-error');
 
 async function main() {
   const required = ['DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME'];
@@ -54,6 +55,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('Failed to apply schema:', err.message);
+  console.error('Failed to apply schema.\n');
+  console.error(describeDbError(err));
   process.exit(1);
 });
