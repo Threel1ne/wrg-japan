@@ -286,7 +286,7 @@ const ROUTES = {
   'PUT /api/section': async (req, res) => {
     const body = await readJsonBody(req);
     const section = str(body.section, 40);
-    if (!['itinerary', 'schedule', 'notes', 'meta', 'travel', 'files'].includes(section)) {
+    if (!['itinerary', 'schedule', 'notes', 'meta', 'travel'].includes(section)) {
       return send(res, 400, { error: 'ส่วนนี้แก้ไขไม่ได้' });
     }
     if (body.value === undefined || body.value === null) return send(res, 400, { error: 'ไม่มีข้อมูล' });

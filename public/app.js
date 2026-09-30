@@ -59,6 +59,8 @@ function relTime(iso) {
 
 let state = null;
 let view = 'overview';
+let filesPath = '';        // current folder in the ไฟล์เอกสาร tab ('' = root)
+let filesListing = null;   // { folders, files } for filesPath, or null while (re)loading
 const SEEN_KEY = 'wrg2026.seen.v1';
 
 const TEAM_STYLE = {
@@ -841,49 +843,88 @@ function renderTravel() {
     </div>`;
 }
 
-/** Pulls a folder ID out of any common Google Drive share-link shape, or
-    passes through a bare ID if that's what was pasted. Returns '' if nothing
-    recognizable is found, rather than guessing. */
-function extractDriveFolderId(url) {
-  if (!url) return '';
-  const patterns = [
-    /\/folders\/([a-zA-Z0-9_-]{10,})/,   // .../drive/folders/<id>
-    /[?&]id=([a-zA-Z0-9_-]{10,})/,        // .../open?id=<id>
-  ];
-  for (const re of patterns) {
-    const m = url.match(re);
-    if (m) return m[1];
+function fileSizeLabel(bytes) {
+  if (bytes == null) return '';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+}
+
+function filesNavigate(newPath) {
+  filesPath = newPath;
+  filesListing = null;
+  render();
+}
+
+async function loadFilesListing() {
+  try {
+    filesListing = await api('GET', `/api/files-list?path=${encodeURIComponent(filesPath)}`);
+  } catch (ex) {
+    toast(ex.message, { bad: true });
+    filesListing = { folders: [], files: [] }; // stop the render loop from re-fetching forever
   }
-  if (/^[a-zA-Z0-9_-]{10,}$/.test(url.trim())) return url.trim(); // bare ID
-  return '';
+  render();
+}
+
+function filesBreadcrumbHtml() {
+  const segments = filesPath.split('/').filter(Boolean);
+  let acc = '';
+  const crumbs = [{ label: 'ไฟล์เอกสาร', path: '' }];
+  for (const seg of segments) {
+    acc = acc ? `${acc}/${seg}` : seg;
+    crumbs.push({ label: seg, path: acc });
+  }
+  return crumbs.map((c, i) => i === crumbs.length - 1
+    ? `<span class="files-crumb current">${esc(c.label)}</span>`
+    : `<button class="files-crumb" data-files-nav="${esc(c.path)}">${esc(c.label)}</button><span class="files-crumb-sep">/</span>`
+  ).join('');
 }
 
 function renderFiles() {
-  const f = state.files || { note: '', driveFolderUrl: '' };
-  const folderId = extractDriveFolderId(f.driveFolderUrl);
+  if (!filesListing) {
+    loadFilesListing(); // fire-and-forget; re-renders itself once the listing arrives
+    return `
+      <div class="section">
+        <div class="section-head"><h2>${icon('folder')}ไฟล์เอกสาร</h2></div>
+        <div class="loading">กำลังโหลด…</div>
+      </div>`;
+  }
+
+  const { folders, files } = filesListing;
+  const empty = !folders.length && !files.length;
+
   return `
     <div class="section">
       <div class="section-head">
         <h2>${icon('folder')}ไฟล์เอกสาร</h2>
         <div class="head-actions">
-          <button class="btn outline sm admin-only" data-edit-json="files">${icon('edit')}แก้ไข</button>
+          <button class="btn outline sm admin-only" data-files-mkdir>${icon('plus')}โฟลเดอร์ใหม่</button>
+          <button class="btn primary sm admin-only" data-files-upload-trigger>${icon('plus')}อัปโหลดไฟล์</button>
         </div>
       </div>
-      ${f.note ? `<div class="card" style="margin-bottom:16px"><p class="muted" style="color:var(--ink-2)">${esc(f.note)}</p></div>` : ''}
-      ${folderId ? `
-        <div class="card drive-embed-card">
-          <iframe class="drive-embed" src="https://drive.google.com/embeddedfolderview?id=${esc(folderId)}#grid"
-            loading="lazy" title="โฟลเดอร์ไฟล์เอกสารทริป"></iframe>
-        </div>
-        <a class="wanderlog-card" href="${esc(f.driveFolderUrl)}" target="_blank" rel="noopener noreferrer" style="margin-top:14px">
-          <span class="wanderlog-card-icon">${icon('folder')}</span>
-          <span class="wanderlog-card-body">
-            <span class="wanderlog-card-title">เปิดใน Google Drive</span>
-            <span class="wanderlog-card-sub">อัปโหลด/จัดการไฟล์ได้ที่นี่ — มุมมองด้านบนเป็นแบบดูอย่างเดียว</span>
-          </span>
-          <span class="wanderlog-card-arrow">${icon('chevron')}</span>
-        </a>`
-        : '<div class="card muted">ยังไม่ได้ตั้งค่าโฟลเดอร์ไฟล์</div>'}
+      <input type="file" id="files-upload-input" class="hidden" multiple>
+      <div class="files-breadcrumb">${filesBreadcrumbHtml()}</div>
+      <div class="card files-browser">
+        ${empty ? '<p class="muted" style="padding:6px 0">โฟลเดอร์นี้ว่างเปล่า</p>' : ''}
+        ${folders.map((f) => `
+          <div class="files-row">
+            <span class="files-row-icon">${icon('folder')}</span>
+            <span class="files-row-name files-row-clickable" data-files-nav="${esc(filesPath ? filesPath + '/' + f.name : f.name)}">${esc(f.name)}</span>
+            <span class="files-row-tools admin-only">
+              <button class="btn danger sm" data-files-delete="folder:${esc(f.name)}" title="ลบโฟลเดอร์">${icon('trash')}</button>
+            </span>
+          </div>`).join('')}
+        ${files.map((f) => `
+          <div class="files-row">
+            <span class="files-row-icon">${icon('clipboard')}</span>
+            <span class="files-row-name files-row-clickable" data-files-download="${esc(f.name)}">${esc(f.name)}</span>
+            <span class="files-row-meta muted">${esc(fileSizeLabel(f.size))}</span>
+            <span class="files-row-tools admin-only">
+              <button class="btn danger sm" data-files-delete="file:${esc(f.name)}" title="ลบไฟล์">${icon('trash')}</button>
+            </span>
+          </div>`).join('')}
+      </div>
+      <p class="muted" style="margin-top:12px">ทุกคนดาวน์โหลดได้ — อัปโหลด/ลบ/จัดการโฟลเดอร์ได้เฉพาะผู้ดูแล</p>
     </div>`;
 }
 
@@ -946,6 +987,7 @@ function render() {
 }
 
 function setView(next) {
+  if (next === 'files' && view !== 'files') { filesPath = ''; filesListing = null; }
   view = next;
   render();
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1332,7 +1374,6 @@ function openJsonEditor(kind, key) {
     itinerary: 'แก้ไขกำหนดการเดินทาง', schedule: 'แก้ไขตารางแข่งขัน',
     notes: 'แก้ไขหมายเหตุ', meta: 'แก้ไขข้อมูลทริป', team: 'แก้ไขข้อมูลทีม',
     travel: 'แก้ไขแผนเที่ยววันอิสระ',
-    files: 'แก้ไขโฟลเดอร์ไฟล์เอกสาร',
   };
   const hints = {
     team: 'แก้ไขสมาชิก (members), รายการแข่ง (matches) และเช็กลิสต์ (checklist) ได้ที่นี่',
@@ -1341,7 +1382,6 @@ function openJsonEditor(kind, key) {
     notes: 'รายการข้อความ (array ของ string)',
     meta: 'ข้อมูลหัวเรื่อง สนาม โรงแรม เที่ยวบิน และวันออกเดินทาง (departISO)',
     travel: 'มี note (ข้อความอธิบาย) และ wanderlogUrl (ลิงก์ทริปจาก Wanderlog — ตั้งค่าการแชร์เป็น "Anyone with the link can view" ก่อนคัดลอกลิงก์มาใส่)',
-    files: 'มี note (ข้อความอธิบาย) และ driveFolderUrl (ลิงก์โฟลเดอร์ Google Drive — ตั้งค่าการแชร์เป็น "Anyone with the link" ก่อน แล้ววางลิงก์แชร์ทั้งอันมาได้เลย ไม่ต้องตัดเอาแต่ ID)',
   };
   el('json-title').textContent = titles[kind] || 'แก้ไขข้อมูล';
   el('json-hint').textContent = hints[kind] || '';
@@ -1385,9 +1425,46 @@ document.addEventListener('click', (e) => {
 el('app').addEventListener('click', async (e) => {
   const t = e.target.closest(
     '[data-goto],[data-new-post],[data-edit-post],[data-del-post],[data-edit-json],[data-edit-team],'
-    + '[data-logout],[data-mark-read],[data-rec],[data-rec-del],[data-rec-add]'
+    + '[data-logout],[data-mark-read],[data-rec],[data-rec-del],[data-rec-add],'
+    + '[data-files-nav],[data-files-mkdir],[data-files-upload-trigger],[data-files-download],[data-files-delete]'
   );
   if (!t) return;
+
+  if (t.dataset.filesNav !== undefined) return filesNavigate(t.dataset.filesNav);
+
+  if (t.hasAttribute('data-files-mkdir')) {
+    const name = prompt('ตั้งชื่อโฟลเดอร์:');
+    if (!name || !name.trim()) return;
+    try {
+      await api('POST', '/api/files-mkdir', { path: filesPath, name: name.trim() });
+      filesListing = null; render();
+      toast('สร้างโฟลเดอร์แล้ว', { icon: 'check' });
+    } catch (ex) { toast(ex.message, { bad: true }); }
+    return;
+  }
+
+  if (t.hasAttribute('data-files-upload-trigger')) return el('files-upload-input').click();
+
+  if (t.dataset.filesDownload !== undefined) {
+    try {
+      const { signedUrl } = await api('GET',
+        `/api/files-download-url?path=${encodeURIComponent(filesPath)}&name=${encodeURIComponent(t.dataset.filesDownload)}`);
+      window.open(signedUrl, '_blank', 'noopener');
+    } catch (ex) { toast(ex.message, { bad: true }); }
+    return;
+  }
+
+  if (t.dataset.filesDelete) {
+    const [kind, name] = t.dataset.filesDelete.split(':');
+    const label = kind === 'folder' ? `โฟลเดอร์ "${name}" และทุกไฟล์ข้างใน` : `ไฟล์ "${name}"`;
+    if (!confirm(`ลบ${label}ถาวรหรือไม่?`)) return;
+    try {
+      await api('POST', '/api/files-delete', { path: filesPath, name, type: kind });
+      filesListing = null; render();
+      toast('ลบแล้ว', { icon: 'trash' });
+    } catch (ex) { toast(ex.message, { bad: true }); }
+    return;
+  }
 
   /* nested (memberEvent) attributes carry a 4th segment: memberIndex before
      the record index — teamKey:kind:memberIndex[:index] */
@@ -1431,6 +1508,27 @@ el('app').addEventListener('click', async (e) => {
 });
 
 el('app').addEventListener('change', async (e) => {
+  /* file-manager upload */
+  if (e.target.id === 'files-upload-input') {
+    const fileList = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!fileList.length) return;
+    for (const file of fileList) {
+      try {
+        const { signedUrl } = await api('POST', '/api/files-upload-url', { path: filesPath, name: file.name });
+        const putRes = await fetch(signedUrl, {
+          method: 'PUT',
+          headers: { 'content-type': file.type || 'application/octet-stream' },
+          body: file,
+        });
+        if (!putRes.ok) throw new Error('อัปโหลดไม่สำเร็จ');
+        toast(`อัปโหลด "${file.name}" สำเร็จ`, { icon: 'check' });
+      } catch (ex) { toast(`${file.name}: ${ex.message}`, { bad: true }); }
+    }
+    filesListing = null; render();
+    return;
+  }
+
   /* local-only packing checklist */
   const check = e.target.dataset.check;
   if (check) {

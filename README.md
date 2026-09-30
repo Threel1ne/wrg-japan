@@ -80,7 +80,15 @@ node scripts/hash-password.js "รหัสผ่านที่ต้องก�
 จะได้ `ADMIN_SALT` และ `ADMIN_HASH` มาใส่เป็น environment variable (รหัสผ่านจริง
 ไม่ถูกเก็บไว้ที่ไหนเลย มีแต่ hash)
 
-**6) Deploy ขึ้น Vercel:**
+**6) ตั้งค่า Supabase Storage** (สำหรับแท็บ "ไฟล์เอกสาร"):
+
+ใน Supabase dashboard ไปที่ **Storage** → สร้าง bucket ใหม่ชื่อ `trip-files`
+ตั้งเป็น **private** (ไม่ใช่ public) — แอปสร้าง signed URL ให้เองตอนดาวน์โหลด/อัปโหลด
+จากนั้นไปที่ **Project → Settings → API** คัดลอก **Project URL** และ
+**service_role key** (ไม่ใช่ anon key) ใส่เป็น `SUPABASE_URL` และ
+`SUPABASE_SERVICE_ROLE_KEY` ใน `.env` (ดูรายละเอียดใน `.env.example`)
+
+**7) Deploy ขึ้น Vercel:**
 
 - Push โค้ดนี้ขึ้น GitHub repo ของคุณ
 - สร้าง Vercel project ใหม่ แล้วเชื่อมกับ repo นั้น (Vercel จะ auto-detect
@@ -222,10 +230,12 @@ hostname -I
 ```
 api/                  Vercel serverless functions (โหมด Vercel+Supabase)
   state.js  rev.js  login.js  logout.js  announcements.js  team.js  section.js
+  files-list.js  files-mkdir.js  files-upload-url.js  files-download-url.js  files-delete.js
 lib/                  โค้ดที่ใช้ร่วมกันของโหมด Vercel+Supabase
   db.js                การเชื่อมต่อ Postgres + อ่าน/เขียนข้อมูล
   auth.js              เช็ครหัสผ่าน + signed-cookie session + rate limit
   helpers.js           ฟังก์ชันช่วยเล็ก ๆ (validation, ส่ง response)
+  storage.js           Supabase Storage — โฟลเดอร์/ไฟล์สำหรับแท็บ "ไฟล์เอกสาร"
   load-env.js          โหลดไฟล์ .env สำหรับทดสอบในเครื่อง (ไม่มีผลบน Vercel จริง)
 sql/
   schema.sql           คำสั่งสร้างตาราง Postgres
