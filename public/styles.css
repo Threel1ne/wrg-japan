@@ -72,12 +72,19 @@ html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font);
   font-size: 15px;
   line-height: 1.7;
 }
+
+/* pins the footer to the bottom of the viewport on short pages (e.g. an
+   empty อัปเดต tab) instead of leaving it stranded above empty background —
+   on tall pages this does nothing, main just grows past one viewport as usual */
+main.container { flex: 1 0 auto; }
 
 /* ---------------------------------------------------- the refracted backdrop
    Glass needs something behind it or it reads as flat white. A slow-drifting
