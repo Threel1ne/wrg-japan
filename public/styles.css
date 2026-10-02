@@ -723,6 +723,31 @@ main.container { padding-top: 24px; padding-bottom: 8px; }
 .files-row-meta { flex: none; font-size: .8rem; color: var(--muted); }
 .files-row-tools { flex: none; display: flex; gap: 6px; }
 
+/* ------------------------------------------------------------------- verify */
+
+.verify-select {
+  display: block; width: 100%; margin-top: 8px;
+  padding: 10px 13px;
+  border-radius: var(--r-sm);
+  border: 1px solid rgba(28,43,34,.14);
+  background: rgba(255,255,255,.75);
+  font-size: .92rem;
+}
+.verify-select:focus {
+  outline: none;
+  background: rgba(255,255,255,.95);
+  border-color: var(--brand-bright);
+  box-shadow: 0 0 0 4px rgba(46,179,88,.20);
+}
+.verify-detail { margin-top: 13px; }
+.verify-fields {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px;
+  margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line);
+}
+@media (max-width: 560px) { .verify-fields { grid-template-columns: 1fr; } }
+.verify-field { display: flex; flex-direction: column; gap: 2px; font-size: .88rem; }
+.verify-field .muted { font-size: .76rem; }
+
 /* ----------------------------------------------------------- announcements */
 
 .post {
@@ -789,6 +814,7 @@ main.container { padding-top: 24px; padding-bottom: 8px; }
 }
 .chip.team-ball   { background: linear-gradient(180deg, rgba(255,255,255,.7), var(--ball-tint));   border-color: rgba(190,58,29,.28); color: var(--ball); }
 .chip.team-soccer { background: linear-gradient(180deg, rgba(255,255,255,.7), var(--soccer-tint)); border-color: rgba(29,108,226,.28); color: var(--soccer); }
+.chip.verified    { background: linear-gradient(180deg, rgba(255,255,255,.7), var(--brand-tint)); border-color: rgba(46,179,88,.35); color: var(--brand-ink); }
 
 /* ----------------------------------------------------------------- buttons */
 

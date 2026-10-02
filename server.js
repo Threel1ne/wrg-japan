@@ -154,6 +154,36 @@ const str = (v, max = 4000) => (typeof v === 'string' ? v.slice(0, max) : '');
 const newId = () => crypto.randomBytes(8).toString('hex');
 const LEVELS = new Set(['info', 'important', 'urgent']);
 
+/** GET /api/state is public — strip each member's sensitive profile (passport,
+    date of birth, food notes, …) before it ever reaches a non-admin browser.
+    A non-admin visitor only gets it back for one member at a time, from
+    /api/verify-lookup, after they've typed that member's date of birth. */
+function publicState(state) {
+  const teams = {};
+  for (const [key, team] of Object.entries(state.teams)) {
+    teams[key] = { ...team, members: team.members.map(({ profile, ...rest }) => rest) };
+  }
+  return { ...state, teams };
+}
+
+// Sensitive, DOB-gated fields (see /api/verify-lookup) — never sent to a
+// non-admin browser via /api/state, only to someone who typed this exact
+// member's date of birth.
+function sanitizeProfile(p) {
+  const src = p || {};
+  return {
+    school: str(src.school, 160),
+    passportNo: str(src.passportNo, 40),
+    passportIssue: str(src.passportIssue, 40),
+    passportExpiry: str(src.passportExpiry, 40),
+    dob: str(src.dob, 40),
+    city: str(src.city, 80),
+    shirtSize: str(src.shirtSize, 20),
+    foodNote: str(src.foodNote, 300),
+    nationalId: str(src.nationalId, 20),
+  };
+}
+
 // ---------------------------------------------------------------------- admin
 
 const ROUTES = {
@@ -177,7 +207,8 @@ const ROUTES = {
   },
 
   'GET /api/state': async (req, res) => {
-    send(res, 200, { ...db, admin: isAdmin(req) });
+    const admin = isAdmin(req);
+    send(res, 200, { ...(admin ? db : publicState(db)), admin });
   },
 
   // Cheap poll target — clients hit this every 15s to spot changes.
@@ -243,6 +274,11 @@ const ROUTES = {
       arena: str(t.arena, 120),
       members: (Array.isArray(t.members) ? t.members : []).slice(0, 60).map((m) => ({
         name: str(m.name, 120), role: str(m.role, 120), code: str(m.code, 60),
+        mainEvent: ['soccer4x4', 'ballfighting', 'both', 'none'].includes(m.mainEvent) ? m.mainEvent : '',
+        // set only by the public /api/verify-member route — preserved here
+        // so a normal admin edit (adding a match, etc.) doesn't wipe it.
+        verified: typeof m.verified === 'string' ? m.verified : null,
+        profile: sanitizeProfile(m.profile),
         // other events this member also competes in (e.g. SumoBOT Junior) —
         // small dated entries, same shape as team matches, so each person
         // gets a real timetable instead of a plain label.
@@ -282,6 +318,44 @@ const ROUTES = {
     send(res, 200, { ok: true, team: db.teams[key], rev: db.rev });
   },
 
+  // Public on purpose — lets a team member confirm their own listed details
+  // are correct, without logging in. Can only stamp a timestamp, no data change.
+  'POST /api/verify-member': async (req, res) => {
+    const body = await readJsonBody(req);
+    const teamKey = str(body.teamKey, 40);
+    const memberIndex = Number(body.memberIndex);
+    const team = db.teams[teamKey];
+    if (!team) return send(res, 404, { error: 'ไม่พบทีมนี้' });
+    const member = team.members[memberIndex];
+    if (!Number.isInteger(memberIndex) || !member) return send(res, 404, { error: 'ไม่พบรายชื่อนี้' });
+    member.verified = new Date().toISOString();
+    await saveDb();
+    send(res, 200, { ok: true, verifiedAt: member.verified, rev: db.rev });
+  },
+
+  // Public on purpose, but reveals nothing by itself: a visitor must already
+  // know which member they're asking about AND that member's exact date of
+  // birth before any sensitive profile data (passport, DOB, food note, …)
+  // comes back. Rate-limited per IP so DOB can't be brute-forced.
+  'POST /api/verify-lookup': async (req, res) => {
+    const ip = `verify:${req.socket.remoteAddress || 'unknown'}`;
+    if (rateLimited(ip)) return send(res, 429, { error: 'ลองมากเกินไป กรุณารอ 15 นาทีแล้วลองใหม่' });
+    const body = await readJsonBody(req);
+    const teamKey = str(body.teamKey, 40);
+    const memberIndex = Number(body.memberIndex);
+    const dob = str(body.dob, 40);
+    const team = db.teams[teamKey];
+    const member = team && Number.isInteger(memberIndex) ? team.members[memberIndex] : null;
+    if (!member) return send(res, 404, { error: 'ไม่พบรายชื่อนี้' });
+    const onFile = member.profile?.dob || '';
+    if (!onFile) return send(res, 404, { error: 'ยังไม่มีข้อมูลวันเกิดของคุณในระบบ กรุณาติดต่อผู้ดูแลทีม' });
+    if (!dob || dob !== onFile) {
+      return send(res, 401, { error: 'วันเกิดไม่ตรงกับข้อมูลที่มี กรุณาลองใหม่อีกครั้ง' });
+    }
+    loginAttempts.delete(ip);
+    send(res, 200, { ok: true, profile: member.profile, verified: member.verified || null });
+  },
+
   // Escape hatch for the bulk sections — the client edits these as raw JSON.
   'PUT /api/section': async (req, res) => {
     const body = await readJsonBody(req);
@@ -296,7 +370,10 @@ const ROUTES = {
   },
 };
 
-const PUBLIC_ROUTES = new Set(['POST /api/login', 'POST /api/logout', 'GET /api/state', 'GET /api/rev']);
+const PUBLIC_ROUTES = new Set([
+  'POST /api/login', 'POST /api/logout', 'GET /api/state', 'GET /api/rev',
+  'POST /api/verify-member', 'POST /api/verify-lookup',
+]);
 
 // ------------------------------------------------------------- static serving
 

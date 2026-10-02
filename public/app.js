@@ -73,6 +73,21 @@ function thaiDate(iso) {
   return `${d.getDate()} ${TH_MONTHS[d.getMonth()]} ${d.getFullYear() + 543}`;
 }
 
+/** Passport/DOB fields are entered and shown as dd/mm/yyyy, but stored (and
+    compared, for the DOB identity check) as plain ISO "yyyy-mm-dd". */
+function ddmmyyyyToIso(s) {
+  const m = String(s ?? '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return '';
+  const [, d, mo, y] = m;
+  return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
+}
+function isoToDdmmyyyy(iso) {
+  const m = String(iso ?? '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return '';
+  const [, y, mo, d] = m;
+  return `${d}/${mo}/${y}`;
+}
+
 function relTime(iso) {
   const min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
   if (min < 1) return 'เมื่อสักครู่';
@@ -90,7 +105,17 @@ let state = null;
 let view = 'overview';
 let filesPath = '';        // current folder in the ไฟล์เอกสาร tab ('' = root)
 let filesListing = null;   // { folders, files } for filesPath, or null while (re)loading
+let verifySelection = '';  // "<teamKey>:<memberIndex>" chosen in the ตรวจสอบข้อมูล tab
+let verifyUnlocked = null; // { teamKey, memberIndex, profile, verifiedAt } once the DOB check passes
+let verifyError = '';      // error from the last failed DOB check, shown inline
 const SEEN_KEY = 'wrg2026.seen.v1';
+
+// A shared link like "?verify=1" (or "?view=verify") opens straight into the
+// self-verification tab instead of the overview — no login needed.
+{
+  const qp = new URLSearchParams(location.search);
+  if (qp.get('verify') === '1' || qp.get('view') === 'verify') view = 'verify';
+}
 
 const TEAM_STYLE = {
   ballfighting: { icon: 'shield', color: 'var(--ball)',   tint: 'var(--ball-tint)',   chip: 'team-ball' },
@@ -104,6 +129,13 @@ const LEVEL_ICON = { info: 'megaphone', important: 'alert', urgent: 'urgent' };
 const LEVEL_PREFIX = { info: '', important: 'สำคัญ · ', urgent: 'ด่วน · ' };
 const STATUS_LABEL = { scheduled: 'ตามกำหนด', live: 'กำลังแข่ง', done: 'จบแล้ว', cancelled: 'ยกเลิก', changed: 'เปลี่ยนเวลา' };
 const TYPE_LABEL = { competition: 'การแข่งขัน', other: 'อื่นๆ (พิธีการ/กิจกรรม)' };
+const MAIN_EVENT_LABEL = {
+  '': 'ยังไม่ระบุ',
+  soccer4x4: 'Soccer 4x4',
+  ballfighting: 'Ball Fighting',
+  both: 'Soccer 4x4 และ Ball Fighting',
+  none: 'ไม่ได้แข่ง (ทีมงาน/พี่เลี้ยง)',
+};
 
 function loadSeen() {
   try { return JSON.parse(localStorage.getItem(SEEN_KEY)) || {}; } catch { return {}; }
@@ -484,8 +516,14 @@ function renderTeam(key) {
               <div class="match-body">
                 <div class="match-label">${esc(mb.name)}
                   ${mb.code ? `<span class="code-chip">${esc(mb.code)}</span>` : ''}
+                  ${mb.verified
+                    ? `<span class="chip verified">${icon('check')}ยืนยันแล้ว · ${esc(relTime(mb.verified))}</span>`
+                    : '<span class="chip">ยังไม่ยืนยันข้อมูล</span>'}
                 </div>
-                ${mb.role ? `<div class="match-note">${esc(mb.role)}</div>` : ''}
+                ${mb.role || mb.mainEvent
+                  ? `<div class="match-note">${[mb.role, mb.mainEvent ? MAIN_EVENT_LABEL[mb.mainEvent] : '']
+                      .filter(Boolean).map(esc).join(' · ')}</div>`
+                  : ''}
                 ${mb.events && mb.events.length
                   ? `<div class="member-timetable">${memberEventGroupsHtml(mb.events, key, i)}</div>`
                   : ''}
@@ -517,6 +555,117 @@ function renderTeam(key) {
     <div class="section">
       <div class="section-head"><h2>${icon('megaphone')}ประกาศที่เกี่ยวกับทีมนี้</h2></div>
       ${posts.map((p) => postHtml(p, seen)).join('') || '<div class="card muted">ยังไม่มีประกาศ</div>'}
+    </div>`;
+}
+
+/** Every member of every team, flattened — used by the "ตรวจสอบข้อมูล" tab's
+    name picker so a visitor can find themselves without knowing their team. */
+function allMembersFlat() {
+  const out = [];
+  for (const key of Object.keys(state.teams)) {
+    const team = state.teams[key];
+    team.members.forEach((mb, i) => {
+      out.push({ teamKey: key, memberIndex: i, teamLabel: team.name, member: mb });
+    });
+  }
+  return out;
+}
+
+const PROFILE_FIELD_LABELS = [
+  ['school', 'โรงเรียน / สังกัด'],
+  ['passportNo', 'เลขพาสปอร์ต'],
+  ['passportIssue', 'วันออกพาสปอร์ต'],
+  ['passportExpiry', 'วันหมดอายุพาสปอร์ต'],
+  ['dob', 'วันเกิด'],
+  ['city', 'จังหวัด/เมือง'],
+  ['shirtSize', 'ไซส์เสื้อ'],
+  ['foodNote', 'อาหาร / ข้อจำกัดด้านอาหาร'],
+  ['nationalId', 'เลขบัตรประชาชน'],
+];
+
+/** Self-serve check: a team member picks their own name, types their date of
+    birth to prove it's really them, reviews what's on file, and confirms
+    it's correct — no login required. The sensitive half of a member's
+    record (passport, DOB, food note, …) is never sent to the browser until
+    this DOB check passes server-side; see /api/verify-lookup. The link is
+    shareable as-is, or with "?verify=1" to land here directly. */
+function renderVerify() {
+  const list = allMembersFlat();
+  const key = (m) => `${m.teamKey}:${m.memberIndex}`;
+  const selected = list.find((m) => key(m) === verifySelection);
+  const unlocked = selected && verifyUnlocked
+    && verifyUnlocked.teamKey === selected.teamKey && verifyUnlocked.memberIndex === selected.memberIndex
+    ? verifyUnlocked : null;
+
+  const options = list.map((m) =>
+    `<option value="${esc(key(m))}"${verifySelection === key(m) ? ' selected' : ''}>`
+    + `${esc(m.teamLabel)} — ${esc(m.member.name)}</option>`
+  ).join('');
+
+  let detail = '';
+  if (selected && !unlocked) {
+    detail = `
+      <form id="verify-dob-form" class="card verify-detail">
+        <p class="muted">
+          เพื่อยืนยันว่าเป็นคุณจริง กรุณากรอกวันเกิดของคุณ (ตามที่แจ้งไว้กับผู้ดูแลทีม)
+        </p>
+        <label for="verify-dob" style="margin-top:10px">วันเกิดของคุณ</label>
+        <input type="date" id="verify-dob" class="verify-select" required>
+        ${verifyError ? `<p class="error" style="margin-top:8px">${esc(verifyError)}</p>` : ''}
+        <button type="submit" class="btn primary" style="margin-top:14px">${icon('shield')}ตรวจสอบ</button>
+      </form>`;
+  } else if (selected && unlocked) {
+    const mb = selected.member;
+    const p = unlocked.profile || {};
+    const profileRows = PROFILE_FIELD_LABELS
+      .filter(([k]) => p[k])
+      .map(([k, label]) => {
+        const val = (k === 'dob' || k === 'passportIssue' || k === 'passportExpiry') ? thaiDate(p[k]) : p[k];
+        return `<div class="verify-field"><span class="muted">${esc(label)}</span><span>${esc(val)}</span></div>`;
+      }).join('');
+
+    detail = `
+      <div class="card verify-detail">
+        <div class="match-label">${esc(mb.name)}
+          ${mb.code ? `<span class="code-chip">${esc(mb.code)}</span>` : ''}
+        </div>
+        <div class="match-note">ทีม: ${esc(selected.teamLabel)}${mb.role ? ' · ' + esc(mb.role) : ''}
+          ${mb.mainEvent ? ' · รายการที่แข่ง: ' + esc(MAIN_EVENT_LABEL[mb.mainEvent]) : ''}</div>
+        ${profileRows ? `<div class="verify-fields">${profileRows}</div>` : ''}
+        ${mb.events && mb.events.length
+          ? `<div class="member-timetable">${memberEventGroupsHtml(mb.events, selected.teamKey, selected.memberIndex)}</div>`
+          : '<p class="muted" style="margin-top:10px">ไม่มีรายการแข่งอื่นที่บันทึกไว้สำหรับคุณ</p>'}
+        <div style="margin-top:16px">
+          ${unlocked.verifiedAt
+            ? `<p class="muted" style="margin-bottom:10px">${icon('check')} คุณยืนยันข้อมูลนี้แล้วเมื่อ ${esc(relTime(unlocked.verifiedAt))}</p>`
+            : ''}
+          <button class="btn primary" data-verify-confirm="${esc(key(selected))}">
+            ${icon('check')}${unlocked.verifiedAt ? 'ยืนยันอีกครั้ง' : 'ยืนยันว่าข้อมูลถูกต้อง'}
+          </button>
+        </div>
+        <p class="muted" style="margin-top:12px">
+          ถ้าข้อมูลด้านบนไม่ถูกต้อง กรุณาติดต่อผู้ดูแลทีมเพื่อแก้ไข — ไม่ต้องกดยืนยัน
+        </p>
+      </div>`;
+  }
+
+  return `
+    <div class="section">
+      <div class="section-head">
+        <h2>${icon('shield')}ตรวจสอบข้อมูลของคุณ</h2>
+        <div class="head-actions">
+          <button class="btn outline sm admin-only" data-copy-verify-link>${icon('check')}คัดลอกลิงก์ส่งให้ทีม</button>
+        </div>
+      </div>
+      <div class="card">
+        <p class="muted">เลือกชื่อของคุณ แล้วตรวจสอบว่ารายการแข่งและรายละเอียดถูกต้องหรือไม่ ก่อนกดยืนยัน</p>
+        <label for="verify-select" style="margin-top:12px">คุณคือใคร?</label>
+        <select id="verify-select" class="verify-select">
+          <option value="">— เลือกชื่อของคุณ —</option>
+          ${options}
+        </select>
+      </div>
+      ${detail}
     </div>`;
 }
 
@@ -1008,6 +1157,7 @@ function render() {
     view === 'itinerary' ? renderItinerary() :
     view === 'travel'    ? renderTravel()    :
     view === 'files'     ? renderFiles()     :
+    view === 'verify'    ? renderVerify()    :
     view === 'updates'   ? renderUpdates()   :
     state.teams[view]    ? renderTeam(view)  : renderOverview();
 
@@ -1186,6 +1336,18 @@ const RECORD_SPECS = {
       { k: 'name', label: 'ชื่อ–นามสกุล', type: 'text', required: true },
       { k: 'code', label: 'รหัสประจำตัว', type: 'text', placeholder: 'เช่น TH-0123' },
       { k: 'role', label: 'ตำแหน่ง / หน้าที่', type: 'text', placeholder: 'เช่น หัวหน้าทีม, โปรแกรมเมอร์' },
+      { k: 'mainEvent', label: 'รายการที่แข่ง (รายการหลัก)', type: 'select', options: MAIN_EVENT_LABEL },
+      // everything below is gated behind the member's own DOB on the public
+      // "ตรวจสอบข้อมูล" tab — see PROFILE_FIELD_LABELS / /api/verify-lookup.
+      { k: 'profile.school', label: 'โรงเรียน / สังกัด', type: 'text' },
+      { k: 'profile.passportNo', label: 'เลขพาสปอร์ต', type: 'text' },
+      { k: 'profile.passportIssue', label: 'วันออกพาสปอร์ต', type: 'ddmmyyyy', placeholder: 'วว/ดด/ปปปป' },
+      { k: 'profile.passportExpiry', label: 'วันหมดอายุพาสปอร์ต', type: 'ddmmyyyy', placeholder: 'วว/ดด/ปปปป' },
+      { k: 'profile.dob', label: 'วันเกิด', type: 'ddmmyyyy', placeholder: 'วว/ดด/ปปปป' },
+      { k: 'profile.city', label: 'จังหวัด/เมือง', type: 'text' },
+      { k: 'profile.shirtSize', label: 'ไซส์เสื้อ', type: 'text' },
+      { k: 'profile.foodNote', label: 'อาหาร / ข้อจำกัดด้านอาหาร', type: 'text', placeholder: 'ไม่บังคับ' },
+      { k: 'profile.nationalId', label: 'เลขบัตรประชาชน', type: 'text' },
     ],
   },
   /* a member's extra events (e.g. SumoBOT Junior) — nested one level inside
@@ -1228,6 +1390,23 @@ const RECORD_SPECS = {
   },
 };
 
+/** Field keys may be dotted ("profile.dob") so one flat form can edit a
+    nested object — getPath reads it for pre-fill, unflatten rebuilds the
+    nested shape before saving. */
+function getPath(obj, path) {
+  return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
+}
+function unflatten(flat) {
+  const out = {};
+  for (const [path, val] of Object.entries(flat)) {
+    const parts = path.split('.');
+    let node = out;
+    for (let i = 0; i < parts.length - 1; i++) node = (node[parts[i]] ??= {});
+    node[parts[parts.length - 1]] = val;
+  }
+  return out;
+}
+
 let recordTarget = null;   // { teamKey, kind, index, memberIndex }  index < 0 === new
 
 /** memberIndex is only meaningful for spec.nested kinds (memberEvent). */
@@ -1261,9 +1440,12 @@ function openRecordEditor(teamKey, kind, index, memberIndex = null) {
     <div id="schedule-picker-preview"></div>` : '';
 
   const fieldsHtml = spec.fields.map((f) => {
-    const raw = rec[f.k] ?? '';
+    const raw = getPath(rec, f.k) ?? '';
     // tags are stored as an array; the input itself is a plain comma-separated text box
-    const val = f.type === 'tags' && Array.isArray(raw) ? raw.join(', ') : raw;
+    // ddmmyyyy is stored as ISO but edited as dd/mm/yyyy text
+    const val = f.type === 'tags' && Array.isArray(raw) ? raw.join(', ')
+      : f.type === 'ddmmyyyy' ? isoToDdmmyyyy(raw)
+      : raw;
     const ph = f.placeholder ? ` placeholder="${esc(f.placeholder)}"` : '';
     const req = f.required ? ' required' : '';
     let input;
@@ -1274,6 +1456,9 @@ function openRecordEditor(teamKey, kind, index, memberIndex = null) {
         `<option value="${k}"${k === selectedKey ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select>`;
     } else if (f.type === 'textarea') {
       input = `<textarea data-f="${f.k}" rows="3"${ph}>${esc(val)}</textarea>`;
+    } else if (f.type === 'ddmmyyyy') {
+      input = `<input type="text" data-f="${f.k}" value="${esc(val)}"${ph}${req}` +
+        ' pattern="\\d{1,2}/\\d{1,2}/\\d{4}" inputmode="numeric">';
     } else {
       input = `<input type="${f.type === 'tags' ? 'text' : f.type}" data-f="${f.k}" value="${esc(val)}"${ph}${req}>`;
     }
@@ -1353,13 +1538,23 @@ el('record-form').addEventListener('submit', async (e) => {
     return;
   }
 
-  const rec = {};
+  const flat = {};
   for (const f of spec.fields) {
     const raw = el('record-fields').querySelector(`[data-f="${f.k}"]`).value.trim();
-    rec[f.k] = f.type === 'tags'
-      ? raw.split(',').map((s) => s.trim()).filter(Boolean)
-      : raw;
+    if (f.type === 'tags') {
+      flat[f.k] = raw.split(',').map((s) => s.trim()).filter(Boolean);
+    } else if (f.type === 'ddmmyyyy') {
+      if (raw && !ddmmyyyyToIso(raw)) {
+        err.textContent = `รูปแบบวันที่ไม่ถูกต้อง (${f.label}) — ใช้ วว/ดด/ปปปป`;
+        err.classList.remove('hidden');
+        return;
+      }
+      flat[f.k] = ddmmyyyyToIso(raw);
+    } else {
+      flat[f.k] = raw;
+    }
   }
+  const rec = unflatten(flat);
   if ((kind === 'match' || kind === 'memberEvent') && !rec.status) rec.status = 'scheduled';
 
   try {
@@ -1455,11 +1650,34 @@ el('app').addEventListener('click', async (e) => {
   const t = e.target.closest(
     '[data-goto],[data-new-post],[data-edit-post],[data-del-post],[data-edit-json],[data-edit-team],'
     + '[data-logout],[data-mark-read],[data-rec],[data-rec-del],[data-rec-add],'
-    + '[data-files-nav],[data-files-mkdir],[data-files-upload-trigger],[data-files-download],[data-files-delete]'
+    + '[data-files-nav],[data-files-mkdir],[data-files-upload-trigger],[data-files-download],[data-files-delete],'
+    + '[data-verify-confirm],[data-copy-verify-link]'
   );
   if (!t) return;
 
   if (t.dataset.filesNav !== undefined) return filesNavigate(t.dataset.filesNav);
+
+  if (t.hasAttribute('data-copy-verify-link')) {
+    const link = `${location.origin}${location.pathname}?verify=1`;
+    try {
+      await navigator.clipboard.writeText(link);
+      toast('คัดลอกลิงก์แล้ว — ส่งให้สมาชิกทีมได้เลย', { icon: 'check' });
+    } catch {
+      toast(link, { icon: 'check' }); // clipboard blocked — show it so it can be copied by hand
+    }
+    return;
+  }
+
+  if (t.dataset.verifyConfirm) {
+    const [teamKey, memberIndex] = t.dataset.verifyConfirm.split(':');
+    try {
+      const res = await api('POST', '/api/verify-member', { teamKey, memberIndex: Number(memberIndex) });
+      if (verifyUnlocked) verifyUnlocked.verifiedAt = res.verifiedAt;
+      await loadState();
+      toast('ยืนยันข้อมูลเรียบร้อยแล้ว ขอบคุณครับ/ค่ะ', { icon: 'check' });
+    } catch (ex) { toast(ex.message, { bad: true }); }
+    return;
+  }
 
   if (t.hasAttribute('data-files-mkdir')) {
     const name = prompt('ตั้งชื่อโฟลเดอร์:');
@@ -1537,6 +1755,16 @@ el('app').addEventListener('click', async (e) => {
 });
 
 el('app').addEventListener('change', async (e) => {
+  /* ตรวจสอบข้อมูล: pick which member you are — reset any unlocked profile
+     from a previous selection so it can't leak onto the newly picked name */
+  if (e.target.id === 'verify-select') {
+    verifySelection = e.target.value;
+    verifyUnlocked = null;
+    verifyError = '';
+    render();
+    return;
+  }
+
   /* file-manager upload */
   if (e.target.id === 'files-upload-input') {
     const fileList = Array.from(e.target.files || []);
@@ -1582,6 +1810,21 @@ el('app').addEventListener('change', async (e) => {
       toast('อัปเดตสถานะแล้ว', { icon: 'check' });
     } catch (ex) { toast(ex.message, { bad: true }); }
   }
+});
+
+el('app').addEventListener('submit', async (e) => {
+  if (e.target.id !== 'verify-dob-form') return;
+  e.preventDefault();
+  const [teamKey, memberIndex] = verifySelection.split(':');
+  const dob = el('verify-dob').value;
+  try {
+    const res = await api('POST', '/api/verify-lookup', { teamKey, memberIndex: Number(memberIndex), dob });
+    verifyUnlocked = { teamKey, memberIndex: Number(memberIndex), profile: res.profile, verifiedAt: res.verified };
+    verifyError = '';
+  } catch (ex) {
+    verifyError = ex.message;
+  }
+  render();
 });
 
 /* --------------------------------------------------------------- brand mark */
