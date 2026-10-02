@@ -569,10 +569,12 @@ const PROFILE_FIELD_LABELS = [
   ['nationalId', 'เลขบัตรประชาชน'],
 ];
 
-/** Self-serve check: a team member picks their own name, types their date of
-    birth — that alone identifies them, since no two members share one — and
+/** Self-serve check: a team member types their date of birth — that alone
+    identifies them, since no two *different* people share one — and
     confirms it's correct. No login, no name picker: typing the right date
-    of birth both finds and proves who you are in one step. The sensitive
+    of birth both finds and proves who you are in one step. Someone on more
+    than one team roster (e.g. a mentor) gets one merged result covering
+    every team they're on — see verifyUnlocked.teams below. The sensitive
     half of a member's record (passport, DOB, food note, …) is never sent to
     the browser until that DOB is typed; see /api/verify (op "lookup"). The
     link is shareable as-is, or with "?verify=1" to land here directly. */
@@ -597,27 +599,33 @@ function renderVerify() {
         return `<div class="verify-field"><span class="muted">${esc(label)}</span><span>${esc(val)}</span></div>`;
       }).join('');
 
+    const teamLabels = v.teams.map((t) => t.teamLabel).join(', ');
+    // a person listed on more than one roster (e.g. a mentor) edits their
+    // personal events through the first team entry — the main team page
+    // still lets admin edit either entry individually.
+    const first = v.teams[0];
+
     body = `
       <div class="card verify-detail">
         <div class="match-label">${esc(v.name)}
           ${v.code ? `<span class="code-chip">${esc(v.code)}</span>` : ''}
         </div>
-        <div class="match-note">ทีม: ${esc(v.teamLabel)}${v.role ? ' · ' + esc(v.role) : ''}
+        <div class="match-note">ทีม: ${esc(teamLabels)}${v.role ? ' · ' + esc(v.role) : ''}
           ${v.mainEvent ? ' · รายการที่แข่ง: ' + esc(MAIN_EVENT_LABEL[v.mainEvent]) : ''}</div>
         ${profileRows ? `<div class="verify-fields">${profileRows}</div>` : ''}
-        ${v.teamMatches && v.teamMatches.length ? `
-          <h3 class="verify-subhead">ตารางแข่งของทีม ${esc(v.teamLabel)}</h3>
-          <div class="verify-matches">${v.teamMatches.map((m, i) =>
-            matchHtml(m, v.teamKey, TEAM_STYLE[v.teamKey] || TEAM_STYLE.soccer4x4, i)).join('')}</div>` : ''}
+        ${v.teams.filter((t) => t.matches && t.matches.length).map((t) => `
+          <h3 class="verify-subhead">ตารางแข่งของทีม ${esc(t.teamLabel)}</h3>
+          <div class="verify-matches">${t.matches.map((m, i) =>
+            matchHtml(m, t.teamKey, TEAM_STYLE[t.teamKey] || TEAM_STYLE.soccer4x4, i)).join('')}</div>`).join('')}
         ${v.events && v.events.length ? `
           <h3 class="verify-subhead">รายการแข่งอื่น ๆ ของคุณ</h3>
-          <div class="member-timetable">${memberEventGroupsHtml(v.events, v.teamKey, v.memberIndex)}</div>`
+          <div class="member-timetable">${memberEventGroupsHtml(v.events, first.teamKey, first.memberIndex)}</div>`
           : ''}
         <div style="margin-top:16px">
           ${v.verifiedAt
             ? `<p class="muted" style="margin-bottom:10px">${icon('check')} คุณยืนยันข้อมูลนี้แล้วเมื่อ ${esc(relTime(v.verifiedAt))}</p>`
             : ''}
-          <button class="btn primary" data-verify-confirm="${esc(v.teamKey)}:${esc(v.memberIndex)}">
+          <button class="btn primary" data-verify-confirm>
             ${icon('check')}${v.verifiedAt ? 'ยืนยันอีกครั้ง' : 'ยืนยันว่าข้อมูลถูกต้อง'}
           </button>
           <button type="button" class="btn outline" data-verify-reset>${icon('chevron')}ตรวจสอบรายชื่ออื่น</button>
@@ -1646,11 +1654,11 @@ el('app').addEventListener('click', async (e) => {
     return;
   }
 
-  if (t.dataset.verifyConfirm) {
-    const [teamKey, memberIndex] = t.dataset.verifyConfirm.split(':');
+  if (t.hasAttribute('data-verify-confirm') && verifyUnlocked) {
+    const targets = verifyUnlocked.teams.map((x) => ({ teamKey: x.teamKey, memberIndex: x.memberIndex }));
     try {
-      const res = await api('POST', '/api/verify', { op: 'confirm', teamKey, memberIndex: Number(memberIndex) });
-      if (verifyUnlocked) verifyUnlocked.verifiedAt = res.verifiedAt;
+      const res = await api('POST', '/api/verify', { op: 'confirm', targets });
+      verifyUnlocked.verifiedAt = res.verifiedAt;
       await loadState();
       toast('ยืนยันข้อมูลเรียบร้อยแล้ว ขอบคุณครับ/ค่ะ', { icon: 'check' });
     } catch (ex) { toast(ex.message, { bad: true }); }
@@ -1791,10 +1799,9 @@ el('app').addEventListener('submit', async (e) => {
   try {
     const res = await api('POST', '/api/verify', { op: 'lookup', dob });
     verifyUnlocked = {
-      teamKey: res.teamKey, memberIndex: res.memberIndex, teamLabel: res.teamLabel,
+      teams: res.teams, // [{ teamKey, memberIndex, teamLabel, matches }, …] — 2+ if on multiple rosters
       name: res.name, code: res.code, role: res.role, mainEvent: res.mainEvent,
       events: res.events, profile: res.profile, verifiedAt: res.verified,
-      teamMatches: res.teamMatches,
     };
     verifyError = '';
   } catch (ex) {

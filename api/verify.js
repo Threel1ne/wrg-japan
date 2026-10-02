@@ -4,16 +4,24 @@ const { loadState, saveState } = require('../lib/db');
 const { isRateLimited, clearRateLimit } = require('../lib/auth');
 const { send, str, clientIp } = require('../lib/helpers');
 
+const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
+
 // Both public on purpose, merged into one function (Vercel's Hobby plan caps
 // a deployment at 12 serverless functions):
 //
 // op "lookup" — the date of birth alone identifies the member (no two
-// members share one), so that's the only input; whoever it belongs to gets
-// their own sensitive profile data (passport, DOB, food note, …) back.
+// *different people* share one), so that's the only input; whoever it
+// belongs to gets their own sensitive profile data (passport, DOB, food
+// note, …) back. A person listed on more than one team roster (e.g. a
+// mentor on both Soccer 4x4 and Ball Fighting) has the same DOB on both
+// entries — those are grouped by national ID (or name, as a fallback) into
+// one merged person rather than rejected as an ambiguous collision; only a
+// DOB genuinely shared by two *different* people still errors out.
 // Rate-limited per IP so DOB can't be brute-forced across the whole roster.
 //
-// op "confirm" — stamps a verified timestamp once the person agrees their
-// details are correct. Can't change any data, just that one timestamp.
+// op "confirm" — stamps a verified timestamp on every team entry for that
+// person at once (one for a normal member, two for someone on both
+// rosters). Can't change any other data.
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return send(res, 405, { error: 'method not allowed' });
 
@@ -40,19 +48,39 @@ module.exports = async (req, res) => {
       if (!matches.length) {
         return send(res, 404, { error: 'ไม่พบข้อมูลที่ตรงกับวันเกิดนี้ กรุณาตรวจสอบวันที่อีกครั้ง หรือติดต่อผู้ดูแลทีม' });
       }
-      if (matches.length > 1) {
-        // shouldn't happen (DOB is meant to be unique across the roster) —
-        // fail safe rather than show the wrong person's data.
+
+      const identityKey = (m) => m.member.profile?.nationalId || norm(m.member.name);
+      const groups = new Map();
+      for (const m of matches) {
+        const k = identityKey(m);
+        if (!groups.has(k)) groups.set(k, []);
+        groups.get(k).push(m);
+      }
+      if (groups.size > 1) {
+        // a DOB genuinely shared by two different people — can't safely
+        // tell them apart, so refuse rather than show the wrong person's data.
         return send(res, 409, { error: 'พบข้อมูลมากกว่าหนึ่งรายการสำหรับวันเกิดนี้ กรุณาติดต่อผู้ดูแลทีม' });
       }
 
       await clearRateLimit(`verify:${ip}`);
-      const { teamKey, memberIndex, team, member } = matches[0];
+      const entries = [...groups.values()][0];
+      const first = entries[0].member;
+
+      const seenEvents = new Set();
+      const events = [];
+      for (const e of entries) {
+        for (const ev of (e.member.events || [])) {
+          const k = ev.id || `${ev.label}|${ev.date}|${ev.time}`;
+          if (!seenEvents.has(k)) { seenEvents.add(k); events.push(ev); }
+        }
+      }
+      const verifiedAt = entries.map((e) => e.member.verified).filter(Boolean).sort().pop() || null;
+
       return send(res, 200, {
-        ok: true, teamKey, memberIndex, teamLabel: team.name,
-        name: member.name, code: member.code, role: member.role, mainEvent: member.mainEvent,
-        events: member.events, profile: member.profile, verified: member.verified || null,
-        teamMatches: team.matches,
+        ok: true,
+        teams: entries.map((e) => ({ teamKey: e.teamKey, memberIndex: e.memberIndex, teamLabel: e.team.name, matches: e.team.matches })),
+        name: first.name, code: first.code, role: first.role, mainEvent: first.mainEvent,
+        events, profile: first.profile, verified: verifiedAt,
       });
     } catch (err) {
       console.error('[api/verify:lookup]', err.message);
@@ -60,20 +88,26 @@ module.exports = async (req, res) => {
     }
   }
 
-  const teamKey = str(body.teamKey, 40);
-  const memberIndex = Number(body.memberIndex);
-
   if (op === 'confirm') {
     try {
-      const state = await loadState();
-      const team = state.teams[teamKey];
-      if (!team) return send(res, 404, { error: 'ไม่พบทีมนี้' });
-      const member = team.members[memberIndex];
-      if (!Number.isInteger(memberIndex) || !member) return send(res, 404, { error: 'ไม่พบรายชื่อนี้' });
+      const targets = Array.isArray(body.targets) && body.targets.length
+        ? body.targets
+        : [{ teamKey: body.teamKey, memberIndex: body.memberIndex }];
 
-      member.verified = new Date().toISOString();
+      const state = await loadState();
+      const now = new Date().toISOString();
+      let any = false;
+      for (const t of targets) {
+        const teamKey = str(t.teamKey, 40);
+        const memberIndex = Number(t.memberIndex);
+        const team = state.teams[teamKey];
+        const member = team && Number.isInteger(memberIndex) ? team.members[memberIndex] : null;
+        if (member) { member.verified = now; any = true; }
+      }
+      if (!any) return send(res, 404, { error: 'ไม่พบรายชื่อนี้' });
+
       const { rev } = await saveState(state);
-      return send(res, 200, { ok: true, verifiedAt: member.verified, rev });
+      return send(res, 200, { ok: true, verifiedAt: now, rev });
     } catch (err) {
       console.error('[api/verify:confirm]', err.message);
       return send(res, 400, { error: err.message || 'คำขอไม่ถูกต้อง' });

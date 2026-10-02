@@ -184,6 +184,8 @@ function sanitizeProfile(p) {
   };
 }
 
+const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
+
 // ---------------------------------------------------------------------- admin
 
 const ROUTES = {
@@ -323,13 +325,16 @@ const ROUTES = {
   // cap; kept the same shape here purely so the two modes share one app.js).
   //
   // op "lookup" — the date of birth alone identifies the member (no two
-  // members share one), so that's the only input; whoever it belongs to
-  // gets their own sensitive profile data (passport, DOB, food note, …)
-  // back. Rate-limited per IP so DOB can't be brute-forced across the
-  // whole roster.
+  // *different people* share one), so that's the only input; whoever it
+  // belongs to gets their own sensitive profile data (passport, DOB, food
+  // note, …) back. A person on more than one team roster (e.g. a mentor on
+  // both teams) has the same DOB on both entries — grouped by national ID
+  // (or name) into one merged person rather than rejected as ambiguous;
+  // only a DOB genuinely shared by two different people still errors out.
+  // Rate-limited per IP so DOB can't be brute-forced across the roster.
   //
-  // op "confirm" — stamps a verified timestamp once the person agrees
-  // their details are correct. Can't change any data, just that timestamp.
+  // op "confirm" — stamps a verified timestamp on every team entry for
+  // that person at once. Can't change any other data.
   'POST /api/verify': async (req, res) => {
     const body = await readJsonBody(req);
 
@@ -348,30 +353,62 @@ const ROUTES = {
       if (!matches.length) {
         return send(res, 404, { error: 'ไม่พบข้อมูลที่ตรงกับวันเกิดนี้ กรุณาตรวจสอบวันที่อีกครั้ง หรือติดต่อผู้ดูแลทีม' });
       }
-      if (matches.length > 1) {
+
+      // A person on more than one team roster (e.g. a mentor on both teams)
+      // has the same DOB on both entries — group by national ID (or name)
+      // into one merged person instead of rejecting as ambiguous. Only a
+      // DOB genuinely shared by two different people still errors out.
+      const identityKey = (m) => m.member.profile?.nationalId || norm(m.member.name);
+      const groups = new Map();
+      for (const m of matches) {
+        const k = identityKey(m);
+        if (!groups.has(k)) groups.set(k, []);
+        groups.get(k).push(m);
+      }
+      if (groups.size > 1) {
         return send(res, 409, { error: 'พบข้อมูลมากกว่าหนึ่งรายการสำหรับวันเกิดนี้ กรุณาติดต่อผู้ดูแลทีม' });
       }
 
       loginAttempts.delete(ip);
-      const { teamKey, memberIndex, team, member } = matches[0];
+      const entries = [...groups.values()][0];
+      const first = entries[0].member;
+
+      const seenEvents = new Set();
+      const events = [];
+      for (const e of entries) {
+        for (const ev of (e.member.events || [])) {
+          const k = ev.id || `${ev.label}|${ev.date}|${ev.time}`;
+          if (!seenEvents.has(k)) { seenEvents.add(k); events.push(ev); }
+        }
+      }
+      const verifiedAt = entries.map((e) => e.member.verified).filter(Boolean).sort().pop() || null;
+
       return send(res, 200, {
-        ok: true, teamKey, memberIndex, teamLabel: team.name,
-        name: member.name, code: member.code, role: member.role, mainEvent: member.mainEvent,
-        events: member.events, profile: member.profile, verified: member.verified || null,
-        teamMatches: team.matches,
+        ok: true,
+        teams: entries.map((e) => ({ teamKey: e.teamKey, memberIndex: e.memberIndex, teamLabel: e.team.name, matches: e.team.matches })),
+        name: first.name, code: first.code, role: first.role, mainEvent: first.mainEvent,
+        events, profile: first.profile, verified: verifiedAt,
       });
     }
 
     if (body.op === 'confirm') {
-      const teamKey = str(body.teamKey, 40);
-      const memberIndex = Number(body.memberIndex);
-      const team = db.teams[teamKey];
-      if (!team) return send(res, 404, { error: 'ไม่พบทีมนี้' });
-      const member = team.members[memberIndex];
-      if (!Number.isInteger(memberIndex) || !member) return send(res, 404, { error: 'ไม่พบรายชื่อนี้' });
-      member.verified = new Date().toISOString();
+      const targets = Array.isArray(body.targets) && body.targets.length
+        ? body.targets
+        : [{ teamKey: body.teamKey, memberIndex: body.memberIndex }];
+
+      const now = new Date().toISOString();
+      let any = false;
+      for (const t of targets) {
+        const teamKey = str(t.teamKey, 40);
+        const memberIndex = Number(t.memberIndex);
+        const team = db.teams[teamKey];
+        const member = team && Number.isInteger(memberIndex) ? team.members[memberIndex] : null;
+        if (member) { member.verified = now; any = true; }
+      }
+      if (!any) return send(res, 404, { error: 'ไม่พบรายชื่อนี้' });
+
       await saveDb();
-      return send(res, 200, { ok: true, verifiedAt: member.verified, rev: db.rev });
+      return send(res, 200, { ok: true, verifiedAt: now, rev: db.rev });
     }
 
     send(res, 400, { error: 'คำขอไม่ถูกต้อง' });
