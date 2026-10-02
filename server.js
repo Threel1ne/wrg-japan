@@ -157,7 +157,7 @@ const LEVELS = new Set(['info', 'important', 'urgent']);
 /** GET /api/state is public — strip each member's sensitive profile (passport,
     date of birth, food notes, …) before it ever reaches a non-admin browser.
     A non-admin visitor only gets it back for one member at a time, from
-    /api/verify-lookup, after they've typed that member's date of birth. */
+    /api/verify (op "lookup"), after they've typed that member's date of birth. */
 function publicState(state) {
   const teams = {};
   for (const [key, team] of Object.entries(state.teams)) {
@@ -166,7 +166,7 @@ function publicState(state) {
   return { ...state, teams };
 }
 
-// Sensitive, DOB-gated fields (see /api/verify-lookup) — never sent to a
+// Sensitive, DOB-gated fields (see /api/verify, op "lookup") — never sent to a
 // non-admin browser via /api/state, only to someone who typed this exact
 // member's date of birth.
 function sanitizeProfile(p) {
@@ -275,7 +275,7 @@ const ROUTES = {
       members: (Array.isArray(t.members) ? t.members : []).slice(0, 60).map((m) => ({
         name: str(m.name, 120), role: str(m.role, 120), code: str(m.code, 60),
         mainEvent: ['soccer4x4', 'ballfighting', 'both', 'none'].includes(m.mainEvent) ? m.mainEvent : '',
-        // set only by the public /api/verify-member route — preserved here
+        // set only by the public /api/verify route (op "confirm") — preserved here
         // so a normal admin edit (adding a match, etc.) doesn't wipe it.
         verified: typeof m.verified === 'string' ? m.verified : null,
         profile: sanitizeProfile(m.profile),
@@ -318,42 +318,48 @@ const ROUTES = {
     send(res, 200, { ok: true, team: db.teams[key], rev: db.rev });
   },
 
-  // Public on purpose — lets a team member confirm their own listed details
-  // are correct, without logging in. Can only stamp a timestamp, no data change.
-  'POST /api/verify-member': async (req, res) => {
+  // Both public on purpose, merged into one route like the Vercel side's
+  // api/verify.js (there it's to stay under the Hobby plan's 12-function
+  // cap; kept the same shape here purely so the two modes share one app.js).
+  //
+  // op "lookup" — a visitor must already know which member they're asking
+  // about AND that member's exact date of birth before any sensitive
+  // profile data (passport, DOB, food note, …) comes back. Rate-limited
+  // per IP so DOB can't be brute-forced.
+  //
+  // op "confirm" — stamps a verified timestamp once the person agrees
+  // their details are correct. Can't change any data, just that timestamp.
+  'POST /api/verify': async (req, res) => {
     const body = await readJsonBody(req);
     const teamKey = str(body.teamKey, 40);
     const memberIndex = Number(body.memberIndex);
     const team = db.teams[teamKey];
-    if (!team) return send(res, 404, { error: 'ไม่พบทีมนี้' });
-    const member = team.members[memberIndex];
-    if (!Number.isInteger(memberIndex) || !member) return send(res, 404, { error: 'ไม่พบรายชื่อนี้' });
-    member.verified = new Date().toISOString();
-    await saveDb();
-    send(res, 200, { ok: true, verifiedAt: member.verified, rev: db.rev });
-  },
 
-  // Public on purpose, but reveals nothing by itself: a visitor must already
-  // know which member they're asking about AND that member's exact date of
-  // birth before any sensitive profile data (passport, DOB, food note, …)
-  // comes back. Rate-limited per IP so DOB can't be brute-forced.
-  'POST /api/verify-lookup': async (req, res) => {
-    const ip = `verify:${req.socket.remoteAddress || 'unknown'}`;
-    if (rateLimited(ip)) return send(res, 429, { error: 'ลองมากเกินไป กรุณารอ 15 นาทีแล้วลองใหม่' });
-    const body = await readJsonBody(req);
-    const teamKey = str(body.teamKey, 40);
-    const memberIndex = Number(body.memberIndex);
-    const dob = str(body.dob, 40);
-    const team = db.teams[teamKey];
-    const member = team && Number.isInteger(memberIndex) ? team.members[memberIndex] : null;
-    if (!member) return send(res, 404, { error: 'ไม่พบรายชื่อนี้' });
-    const onFile = member.profile?.dob || '';
-    if (!onFile) return send(res, 404, { error: 'ยังไม่มีข้อมูลวันเกิดของคุณในระบบ กรุณาติดต่อผู้ดูแลทีม' });
-    if (!dob || dob !== onFile) {
-      return send(res, 401, { error: 'วันเกิดไม่ตรงกับข้อมูลที่มี กรุณาลองใหม่อีกครั้ง' });
+    if (body.op === 'lookup') {
+      const ip = `verify:${req.socket.remoteAddress || 'unknown'}`;
+      if (rateLimited(ip)) return send(res, 429, { error: 'ลองมากเกินไป กรุณารอ 15 นาทีแล้วลองใหม่' });
+      const dob = str(body.dob, 40);
+      const member = team && Number.isInteger(memberIndex) ? team.members[memberIndex] : null;
+      if (!member) return send(res, 404, { error: 'ไม่พบรายชื่อนี้' });
+      const onFile = member.profile?.dob || '';
+      if (!onFile) return send(res, 404, { error: 'ยังไม่มีข้อมูลวันเกิดของคุณในระบบ กรุณาติดต่อผู้ดูแลทีม' });
+      if (!dob || dob !== onFile) {
+        return send(res, 401, { error: 'วันเกิดไม่ตรงกับข้อมูลที่มี กรุณาลองใหม่อีกครั้ง' });
+      }
+      loginAttempts.delete(ip);
+      return send(res, 200, { ok: true, profile: member.profile, verified: member.verified || null });
     }
-    loginAttempts.delete(ip);
-    send(res, 200, { ok: true, profile: member.profile, verified: member.verified || null });
+
+    if (body.op === 'confirm') {
+      if (!team) return send(res, 404, { error: 'ไม่พบทีมนี้' });
+      const member = team.members[memberIndex];
+      if (!Number.isInteger(memberIndex) || !member) return send(res, 404, { error: 'ไม่พบรายชื่อนี้' });
+      member.verified = new Date().toISOString();
+      await saveDb();
+      return send(res, 200, { ok: true, verifiedAt: member.verified, rev: db.rev });
+    }
+
+    send(res, 400, { error: 'คำขอไม่ถูกต้อง' });
   },
 
   // Escape hatch for the bulk sections — the client edits these as raw JSON.
@@ -371,8 +377,7 @@ const ROUTES = {
 };
 
 const PUBLIC_ROUTES = new Set([
-  'POST /api/login', 'POST /api/logout', 'GET /api/state', 'GET /api/rev',
-  'POST /api/verify-member', 'POST /api/verify-lookup',
+  'POST /api/login', 'POST /api/logout', 'GET /api/state', 'GET /api/rev', 'POST /api/verify',
 ]);
 
 // ------------------------------------------------------------- static serving

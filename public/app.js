@@ -587,7 +587,7 @@ const PROFILE_FIELD_LABELS = [
     birth to prove it's really them, reviews what's on file, and confirms
     it's correct — no login required. The sensitive half of a member's
     record (passport, DOB, food note, …) is never sent to the browser until
-    this DOB check passes server-side; see /api/verify-lookup. The link is
+    this DOB check passes server-side; see /api/verify (op "lookup"). The link is
     shareable as-is, or with "?verify=1" to land here directly. */
 function renderVerify() {
   const list = allMembersFlat();
@@ -1036,7 +1036,7 @@ function filesNavigate(newPath) {
 
 async function loadFilesListing() {
   try {
-    filesListing = await api('GET', `/api/files-list?path=${encodeURIComponent(filesPath)}`);
+    filesListing = await api('GET', `/api/files?op=list&path=${encodeURIComponent(filesPath)}`);
   } catch (ex) {
     toast(ex.message, { bad: true });
     filesListing = { folders: [], files: [] }; // stop the render loop from re-fetching forever
@@ -1338,7 +1338,7 @@ const RECORD_SPECS = {
       { k: 'role', label: 'ตำแหน่ง / หน้าที่', type: 'text', placeholder: 'เช่น หัวหน้าทีม, โปรแกรมเมอร์' },
       { k: 'mainEvent', label: 'รายการที่แข่ง (รายการหลัก)', type: 'select', options: MAIN_EVENT_LABEL },
       // everything below is gated behind the member's own DOB on the public
-      // "ตรวจสอบข้อมูล" tab — see PROFILE_FIELD_LABELS / /api/verify-lookup.
+      // "ตรวจสอบข้อมูล" tab — see PROFILE_FIELD_LABELS / /api/verify.
       { k: 'profile.school', label: 'โรงเรียน / สังกัด', type: 'text' },
       { k: 'profile.passportNo', label: 'เลขพาสปอร์ต', type: 'text' },
       { k: 'profile.passportIssue', label: 'วันออกพาสปอร์ต', type: 'ddmmyyyy', placeholder: 'วว/ดด/ปปปป' },
@@ -1671,7 +1671,7 @@ el('app').addEventListener('click', async (e) => {
   if (t.dataset.verifyConfirm) {
     const [teamKey, memberIndex] = t.dataset.verifyConfirm.split(':');
     try {
-      const res = await api('POST', '/api/verify-member', { teamKey, memberIndex: Number(memberIndex) });
+      const res = await api('POST', '/api/verify', { op: 'confirm', teamKey, memberIndex: Number(memberIndex) });
       if (verifyUnlocked) verifyUnlocked.verifiedAt = res.verifiedAt;
       await loadState();
       toast('ยืนยันข้อมูลเรียบร้อยแล้ว ขอบคุณครับ/ค่ะ', { icon: 'check' });
@@ -1683,7 +1683,7 @@ el('app').addEventListener('click', async (e) => {
     const name = prompt('ตั้งชื่อโฟลเดอร์:');
     if (!name || !name.trim()) return;
     try {
-      await api('POST', '/api/files-mkdir', { path: filesPath, name: name.trim() });
+      await api('POST', '/api/files', { op: 'mkdir', path: filesPath, name: name.trim() });
       filesListing = null; render();
       toast('สร้างโฟลเดอร์แล้ว', { icon: 'check' });
     } catch (ex) { toast(ex.message, { bad: true }); }
@@ -1695,7 +1695,7 @@ el('app').addEventListener('click', async (e) => {
   if (t.dataset.filesDownload !== undefined) {
     try {
       const { signedUrl } = await api('GET',
-        `/api/files-download-url?path=${encodeURIComponent(filesPath)}&name=${encodeURIComponent(t.dataset.filesDownload)}`);
+        `/api/files?op=download-url&path=${encodeURIComponent(filesPath)}&name=${encodeURIComponent(t.dataset.filesDownload)}`);
       window.open(signedUrl, '_blank', 'noopener');
     } catch (ex) { toast(ex.message, { bad: true }); }
     return;
@@ -1706,7 +1706,7 @@ el('app').addEventListener('click', async (e) => {
     const label = kind === 'folder' ? `โฟลเดอร์ "${name}" และทุกไฟล์ข้างใน` : `ไฟล์ "${name}"`;
     if (!confirm(`ลบ${label}ถาวรหรือไม่?`)) return;
     try {
-      await api('POST', '/api/files-delete', { path: filesPath, name, type: kind });
+      await api('POST', '/api/files', { op: 'delete', path: filesPath, name, type: kind });
       filesListing = null; render();
       toast('ลบแล้ว', { icon: 'trash' });
     } catch (ex) { toast(ex.message, { bad: true }); }
@@ -1772,7 +1772,7 @@ el('app').addEventListener('change', async (e) => {
     if (!fileList.length) return;
     for (const file of fileList) {
       try {
-        const { signedUrl } = await api('POST', '/api/files-upload-url', { path: filesPath, name: file.name });
+        const { signedUrl } = await api('POST', '/api/files', { op: 'upload-url', path: filesPath, name: file.name });
         const putRes = await fetch(signedUrl, {
           method: 'PUT',
           headers: { 'content-type': file.type || 'application/octet-stream' },
@@ -1818,7 +1818,7 @@ el('app').addEventListener('submit', async (e) => {
   const [teamKey, memberIndex] = verifySelection.split(':');
   const dob = el('verify-dob').value;
   try {
-    const res = await api('POST', '/api/verify-lookup', { teamKey, memberIndex: Number(memberIndex), dob });
+    const res = await api('POST', '/api/verify', { op: 'lookup', teamKey, memberIndex: Number(memberIndex), dob });
     verifyUnlocked = { teamKey, memberIndex: Number(memberIndex), profile: res.profile, verifiedAt: res.verified };
     verifyError = '';
   } catch (ex) {

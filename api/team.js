@@ -4,7 +4,7 @@ const { loadState, saveState } = require('../lib/db');
 const { isAdmin } = require('../lib/auth');
 const { send, str, newId } = require('../lib/helpers');
 
-// Sensitive, DOB-gated fields (see /api/verify-lookup) — never sent to a
+// Sensitive, DOB-gated fields (see /api/verify, op "lookup") — never sent to a
 // non-admin browser via /api/state, only to someone who typed this exact
 // member's date of birth.
 function sanitizeProfile(p) {
@@ -47,7 +47,7 @@ module.exports = async (req, res) => {
       members: (Array.isArray(t.members) ? t.members : []).slice(0, 60).map((m) => ({
         name: str(m.name, 120), role: str(m.role, 120), code: str(m.code, 60),
         mainEvent: ['soccer4x4', 'ballfighting', 'both', 'none'].includes(m.mainEvent) ? m.mainEvent : '',
-        // set only by the public /api/verify-member endpoint — preserved
+        // set only by the public /api/verify endpoint (op "confirm") — preserved
         // here so a normal admin edit (adding a match, etc.) doesn't wipe it.
         verified: typeof m.verified === 'string' ? m.verified : null,
         profile: sanitizeProfile(m.profile),
