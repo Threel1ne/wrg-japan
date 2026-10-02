@@ -322,35 +322,49 @@ const ROUTES = {
   // api/verify.js (there it's to stay under the Hobby plan's 12-function
   // cap; kept the same shape here purely so the two modes share one app.js).
   //
-  // op "lookup" — a visitor must already know which member they're asking
-  // about AND that member's exact date of birth before any sensitive
-  // profile data (passport, DOB, food note, …) comes back. Rate-limited
-  // per IP so DOB can't be brute-forced.
+  // op "lookup" — the date of birth alone identifies the member (no two
+  // members share one), so that's the only input; whoever it belongs to
+  // gets their own sensitive profile data (passport, DOB, food note, …)
+  // back. Rate-limited per IP so DOB can't be brute-forced across the
+  // whole roster.
   //
   // op "confirm" — stamps a verified timestamp once the person agrees
   // their details are correct. Can't change any data, just that timestamp.
   'POST /api/verify': async (req, res) => {
     const body = await readJsonBody(req);
-    const teamKey = str(body.teamKey, 40);
-    const memberIndex = Number(body.memberIndex);
-    const team = db.teams[teamKey];
 
     if (body.op === 'lookup') {
       const ip = `verify:${req.socket.remoteAddress || 'unknown'}`;
       if (rateLimited(ip)) return send(res, 429, { error: 'ลองมากเกินไป กรุณารอ 15 นาทีแล้วลองใหม่' });
       const dob = str(body.dob, 40);
-      const member = team && Number.isInteger(memberIndex) ? team.members[memberIndex] : null;
-      if (!member) return send(res, 404, { error: 'ไม่พบรายชื่อนี้' });
-      const onFile = member.profile?.dob || '';
-      if (!onFile) return send(res, 404, { error: 'ยังไม่มีข้อมูลวันเกิดของคุณในระบบ กรุณาติดต่อผู้ดูแลทีม' });
-      if (!dob || dob !== onFile) {
-        return send(res, 401, { error: 'วันเกิดไม่ตรงกับข้อมูลที่มี กรุณาลองใหม่อีกครั้ง' });
+      if (!dob) return send(res, 400, { error: 'กรุณากรอกวันเกิด' });
+
+      const matches = [];
+      for (const [teamKey, team] of Object.entries(db.teams)) {
+        team.members.forEach((member, memberIndex) => {
+          if (member.profile?.dob === dob) matches.push({ teamKey, memberIndex, team, member });
+        });
       }
+      if (!matches.length) {
+        return send(res, 404, { error: 'ไม่พบข้อมูลที่ตรงกับวันเกิดนี้ กรุณาตรวจสอบวันที่อีกครั้ง หรือติดต่อผู้ดูแลทีม' });
+      }
+      if (matches.length > 1) {
+        return send(res, 409, { error: 'พบข้อมูลมากกว่าหนึ่งรายการสำหรับวันเกิดนี้ กรุณาติดต่อผู้ดูแลทีม' });
+      }
+
       loginAttempts.delete(ip);
-      return send(res, 200, { ok: true, profile: member.profile, verified: member.verified || null });
+      const { teamKey, memberIndex, team, member } = matches[0];
+      return send(res, 200, {
+        ok: true, teamKey, memberIndex, teamLabel: team.name,
+        name: member.name, code: member.code, role: member.role, mainEvent: member.mainEvent,
+        events: member.events, profile: member.profile, verified: member.verified || null,
+      });
     }
 
     if (body.op === 'confirm') {
+      const teamKey = str(body.teamKey, 40);
+      const memberIndex = Number(body.memberIndex);
+      const team = db.teams[teamKey];
       if (!team) return send(res, 404, { error: 'ไม่พบทีมนี้' });
       const member = team.members[memberIndex];
       if (!Number.isInteger(memberIndex) || !member) return send(res, 404, { error: 'ไม่พบรายชื่อนี้' });

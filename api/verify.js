@@ -7,10 +7,10 @@ const { send, str, clientIp } = require('../lib/helpers');
 // Both public on purpose, merged into one function (Vercel's Hobby plan caps
 // a deployment at 12 serverless functions):
 //
-// op "lookup" — a visitor must already know which member they're asking
-// about AND that member's exact date of birth before any sensitive profile
-// data (passport, DOB, food note, …) comes back. Rate-limited per IP so DOB
-// can't be brute-forced.
+// op "lookup" — the date of birth alone identifies the member (no two
+// members share one), so that's the only input; whoever it belongs to gets
+// their own sensitive profile data (passport, DOB, food note, …) back.
+// Rate-limited per IP so DOB can't be brute-forced across the whole roster.
 //
 // op "confirm" — stamps a verified timestamp once the person agrees their
 // details are correct. Can't change any data, just that one timestamp.
@@ -19,8 +19,6 @@ module.exports = async (req, res) => {
 
   const body = req.body || {};
   const op = body.op;
-  const teamKey = str(body.teamKey, 40);
-  const memberIndex = Number(body.memberIndex);
 
   if (op === 'lookup') {
     const ip = clientIp(req);
@@ -29,25 +27,40 @@ module.exports = async (req, res) => {
       if (await isRateLimited(`verify:${ip}`)) {
         return send(res, 429, { error: 'ลองมากเกินไป กรุณารอ 15 นาทีแล้วลองใหม่' });
       }
+      if (!dob) return send(res, 400, { error: 'กรุณากรอกวันเกิด' });
 
       const state = await loadState();
-      const team = state.teams[teamKey];
-      const member = team && Number.isInteger(memberIndex) ? team.members[memberIndex] : null;
-      if (!member) return send(res, 404, { error: 'ไม่พบรายชื่อนี้' });
+      const matches = [];
+      for (const [teamKey, team] of Object.entries(state.teams)) {
+        team.members.forEach((member, memberIndex) => {
+          if (member.profile?.dob === dob) matches.push({ teamKey, memberIndex, team, member });
+        });
+      }
 
-      const onFile = member.profile?.dob || '';
-      if (!onFile) return send(res, 404, { error: 'ยังไม่มีข้อมูลวันเกิดของคุณในระบบ กรุณาติดต่อผู้ดูแลทีม' });
-      if (!dob || dob !== onFile) {
-        return send(res, 401, { error: 'วันเกิดไม่ตรงกับข้อมูลที่มี กรุณาลองใหม่อีกครั้ง' });
+      if (!matches.length) {
+        return send(res, 404, { error: 'ไม่พบข้อมูลที่ตรงกับวันเกิดนี้ กรุณาตรวจสอบวันที่อีกครั้ง หรือติดต่อผู้ดูแลทีม' });
+      }
+      if (matches.length > 1) {
+        // shouldn't happen (DOB is meant to be unique across the roster) —
+        // fail safe rather than show the wrong person's data.
+        return send(res, 409, { error: 'พบข้อมูลมากกว่าหนึ่งรายการสำหรับวันเกิดนี้ กรุณาติดต่อผู้ดูแลทีม' });
       }
 
       await clearRateLimit(`verify:${ip}`);
-      return send(res, 200, { ok: true, profile: member.profile, verified: member.verified || null });
+      const { teamKey, memberIndex, team, member } = matches[0];
+      return send(res, 200, {
+        ok: true, teamKey, memberIndex, teamLabel: team.name,
+        name: member.name, code: member.code, role: member.role, mainEvent: member.mainEvent,
+        events: member.events, profile: member.profile, verified: member.verified || null,
+      });
     } catch (err) {
       console.error('[api/verify:lookup]', err.message);
       return send(res, 400, { error: err.message || 'คำขอไม่ถูกต้อง' });
     }
   }
+
+  const teamKey = str(body.teamKey, 40);
+  const memberIndex = Number(body.memberIndex);
 
   if (op === 'confirm') {
     try {

@@ -105,8 +105,7 @@ let state = null;
 let view = 'overview';
 let filesPath = '';        // current folder in the ไฟล์เอกสาร tab ('' = root)
 let filesListing = null;   // { folders, files } for filesPath, or null while (re)loading
-let verifySelection = '';  // "<teamKey>:<memberIndex>" chosen in the ตรวจสอบข้อมูล tab
-let verifyUnlocked = null; // { teamKey, memberIndex, profile, verifiedAt } once the DOB check passes
+let verifyUnlocked = null; // full lookup result (name, team, profile, verifiedAt, …) once the DOB check passes
 let verifyError = '';      // error from the last failed DOB check, shown inline
 const SEEN_KEY = 'wrg2026.seen.v1';
 
@@ -558,19 +557,6 @@ function renderTeam(key) {
     </div>`;
 }
 
-/** Every member of every team, flattened — used by the "ตรวจสอบข้อมูล" tab's
-    name picker so a visitor can find themselves without knowing their team. */
-function allMembersFlat() {
-  const out = [];
-  for (const key of Object.keys(state.teams)) {
-    const team = state.teams[key];
-    team.members.forEach((mb, i) => {
-      out.push({ teamKey: key, memberIndex: i, teamLabel: team.name, member: mb });
-    });
-  }
-  return out;
-}
-
 const PROFILE_FIELD_LABELS = [
   ['school', 'โรงเรียน / สังกัด'],
   ['passportNo', 'เลขพาสปอร์ต'],
@@ -584,39 +570,26 @@ const PROFILE_FIELD_LABELS = [
 ];
 
 /** Self-serve check: a team member picks their own name, types their date of
-    birth to prove it's really them, reviews what's on file, and confirms
-    it's correct — no login required. The sensitive half of a member's
-    record (passport, DOB, food note, …) is never sent to the browser until
-    this DOB check passes server-side; see /api/verify (op "lookup"). The link is
-    shareable as-is, or with "?verify=1" to land here directly. */
+    birth — that alone identifies them, since no two members share one — and
+    confirms it's correct. No login, no name picker: typing the right date
+    of birth both finds and proves who you are in one step. The sensitive
+    half of a member's record (passport, DOB, food note, …) is never sent to
+    the browser until that DOB is typed; see /api/verify (op "lookup"). The
+    link is shareable as-is, or with "?verify=1" to land here directly. */
 function renderVerify() {
-  const list = allMembersFlat();
-  const key = (m) => `${m.teamKey}:${m.memberIndex}`;
-  const selected = list.find((m) => key(m) === verifySelection);
-  const unlocked = selected && verifyUnlocked
-    && verifyUnlocked.teamKey === selected.teamKey && verifyUnlocked.memberIndex === selected.memberIndex
-    ? verifyUnlocked : null;
-
-  const options = list.map((m) =>
-    `<option value="${esc(key(m))}"${verifySelection === key(m) ? ' selected' : ''}>`
-    + `${esc(m.teamLabel)} — ${esc(m.member.name)}</option>`
-  ).join('');
-
-  let detail = '';
-  if (selected && !unlocked) {
-    detail = `
+  let body;
+  if (!verifyUnlocked) {
+    body = `
       <form id="verify-dob-form" class="card verify-detail">
-        <p class="muted">
-          เพื่อยืนยันว่าเป็นคุณจริง กรุณากรอกวันเกิดของคุณ (ตามที่แจ้งไว้กับผู้ดูแลทีม)
-        </p>
-        <label for="verify-dob" style="margin-top:10px">วันเกิดของคุณ</label>
-        <input type="date" id="verify-dob" class="verify-select" required>
+        <label for="verify-dob">วันเกิดของคุณ</label>
+        <input type="text" id="verify-dob" class="verify-select" placeholder="วว/ดด/ปปปป"
+          pattern="\\d{1,2}/\\d{1,2}/\\d{4}" inputmode="numeric" required>
         ${verifyError ? `<p class="error" style="margin-top:8px">${esc(verifyError)}</p>` : ''}
         <button type="submit" class="btn primary" style="margin-top:14px">${icon('shield')}ตรวจสอบ</button>
       </form>`;
-  } else if (selected && unlocked) {
-    const mb = selected.member;
-    const p = unlocked.profile || {};
+  } else {
+    const v = verifyUnlocked;
+    const p = v.profile || {};
     const profileRows = PROFILE_FIELD_LABELS
       .filter(([k]) => p[k])
       .map(([k, label]) => {
@@ -624,24 +597,25 @@ function renderVerify() {
         return `<div class="verify-field"><span class="muted">${esc(label)}</span><span>${esc(val)}</span></div>`;
       }).join('');
 
-    detail = `
+    body = `
       <div class="card verify-detail">
-        <div class="match-label">${esc(mb.name)}
-          ${mb.code ? `<span class="code-chip">${esc(mb.code)}</span>` : ''}
+        <div class="match-label">${esc(v.name)}
+          ${v.code ? `<span class="code-chip">${esc(v.code)}</span>` : ''}
         </div>
-        <div class="match-note">ทีม: ${esc(selected.teamLabel)}${mb.role ? ' · ' + esc(mb.role) : ''}
-          ${mb.mainEvent ? ' · รายการที่แข่ง: ' + esc(MAIN_EVENT_LABEL[mb.mainEvent]) : ''}</div>
+        <div class="match-note">ทีม: ${esc(v.teamLabel)}${v.role ? ' · ' + esc(v.role) : ''}
+          ${v.mainEvent ? ' · รายการที่แข่ง: ' + esc(MAIN_EVENT_LABEL[v.mainEvent]) : ''}</div>
         ${profileRows ? `<div class="verify-fields">${profileRows}</div>` : ''}
-        ${mb.events && mb.events.length
-          ? `<div class="member-timetable">${memberEventGroupsHtml(mb.events, selected.teamKey, selected.memberIndex)}</div>`
+        ${v.events && v.events.length
+          ? `<div class="member-timetable">${memberEventGroupsHtml(v.events, v.teamKey, v.memberIndex)}</div>`
           : '<p class="muted" style="margin-top:10px">ไม่มีรายการแข่งอื่นที่บันทึกไว้สำหรับคุณ</p>'}
         <div style="margin-top:16px">
-          ${unlocked.verifiedAt
-            ? `<p class="muted" style="margin-bottom:10px">${icon('check')} คุณยืนยันข้อมูลนี้แล้วเมื่อ ${esc(relTime(unlocked.verifiedAt))}</p>`
+          ${v.verifiedAt
+            ? `<p class="muted" style="margin-bottom:10px">${icon('check')} คุณยืนยันข้อมูลนี้แล้วเมื่อ ${esc(relTime(v.verifiedAt))}</p>`
             : ''}
-          <button class="btn primary" data-verify-confirm="${esc(key(selected))}">
-            ${icon('check')}${unlocked.verifiedAt ? 'ยืนยันอีกครั้ง' : 'ยืนยันว่าข้อมูลถูกต้อง'}
+          <button class="btn primary" data-verify-confirm="${esc(v.teamKey)}:${esc(v.memberIndex)}">
+            ${icon('check')}${v.verifiedAt ? 'ยืนยันอีกครั้ง' : 'ยืนยันว่าข้อมูลถูกต้อง'}
           </button>
+          <button type="button" class="btn outline" data-verify-reset>${icon('chevron')}ตรวจสอบรายชื่ออื่น</button>
         </div>
         <p class="muted" style="margin-top:12px">
           ถ้าข้อมูลด้านบนไม่ถูกต้อง กรุณาติดต่อผู้ดูแลทีมเพื่อแก้ไข — ไม่ต้องกดยืนยัน
@@ -657,15 +631,7 @@ function renderVerify() {
           <button class="btn outline sm admin-only" data-copy-verify-link>${icon('check')}คัดลอกลิงก์ส่งให้ทีม</button>
         </div>
       </div>
-      <div class="card">
-        <p class="muted">เลือกชื่อของคุณ แล้วตรวจสอบว่ารายการแข่งและรายละเอียดถูกต้องหรือไม่ ก่อนกดยืนยัน</p>
-        <label for="verify-select" style="margin-top:12px">คุณคือใคร?</label>
-        <select id="verify-select" class="verify-select">
-          <option value="">— เลือกชื่อของคุณ —</option>
-          ${options}
-        </select>
-      </div>
-      ${detail}
+      ${body}
     </div>`;
 }
 
@@ -1651,11 +1617,18 @@ el('app').addEventListener('click', async (e) => {
     '[data-goto],[data-new-post],[data-edit-post],[data-del-post],[data-edit-json],[data-edit-team],'
     + '[data-logout],[data-mark-read],[data-rec],[data-rec-del],[data-rec-add],'
     + '[data-files-nav],[data-files-mkdir],[data-files-upload-trigger],[data-files-download],[data-files-delete],'
-    + '[data-verify-confirm],[data-copy-verify-link]'
+    + '[data-verify-confirm],[data-verify-reset],[data-copy-verify-link]'
   );
   if (!t) return;
 
   if (t.dataset.filesNav !== undefined) return filesNavigate(t.dataset.filesNav);
+
+  if (t.hasAttribute('data-verify-reset')) {
+    verifyUnlocked = null;
+    verifyError = '';
+    render();
+    return;
+  }
 
   if (t.hasAttribute('data-copy-verify-link')) {
     const link = `${location.origin}${location.pathname}?verify=1`;
@@ -1755,16 +1728,6 @@ el('app').addEventListener('click', async (e) => {
 });
 
 el('app').addEventListener('change', async (e) => {
-  /* ตรวจสอบข้อมูล: pick which member you are — reset any unlocked profile
-     from a previous selection so it can't leak onto the newly picked name */
-  if (e.target.id === 'verify-select') {
-    verifySelection = e.target.value;
-    verifyUnlocked = null;
-    verifyError = '';
-    render();
-    return;
-  }
-
   /* file-manager upload */
   if (e.target.id === 'files-upload-input') {
     const fileList = Array.from(e.target.files || []);
@@ -1815,11 +1778,18 @@ el('app').addEventListener('change', async (e) => {
 el('app').addEventListener('submit', async (e) => {
   if (e.target.id !== 'verify-dob-form') return;
   e.preventDefault();
-  const [teamKey, memberIndex] = verifySelection.split(':');
-  const dob = el('verify-dob').value;
+  const dob = ddmmyyyyToIso(el('verify-dob').value);
+  if (!dob) {
+    verifyError = 'รูปแบบวันเกิดไม่ถูกต้อง — ใช้ วว/ดด/ปปปป';
+    return render();
+  }
   try {
-    const res = await api('POST', '/api/verify', { op: 'lookup', teamKey, memberIndex: Number(memberIndex), dob });
-    verifyUnlocked = { teamKey, memberIndex: Number(memberIndex), profile: res.profile, verifiedAt: res.verified };
+    const res = await api('POST', '/api/verify', { op: 'lookup', dob });
+    verifyUnlocked = {
+      teamKey: res.teamKey, memberIndex: res.memberIndex, teamLabel: res.teamLabel,
+      name: res.name, code: res.code, role: res.role, mainEvent: res.mainEvent,
+      events: res.events, profile: res.profile, verifiedAt: res.verified,
+    };
     verifyError = '';
   } catch (ex) {
     verifyError = ex.message;
