@@ -605,9 +605,14 @@ function renderVerify() {
         <div class="match-note">ทีม: ${esc(v.teamLabel)}${v.role ? ' · ' + esc(v.role) : ''}
           ${v.mainEvent ? ' · รายการที่แข่ง: ' + esc(MAIN_EVENT_LABEL[v.mainEvent]) : ''}</div>
         ${profileRows ? `<div class="verify-fields">${profileRows}</div>` : ''}
-        ${v.events && v.events.length
-          ? `<div class="member-timetable">${memberEventGroupsHtml(v.events, v.teamKey, v.memberIndex)}</div>`
-          : '<p class="muted" style="margin-top:10px">ไม่มีรายการแข่งอื่นที่บันทึกไว้สำหรับคุณ</p>'}
+        ${v.teamMatches && v.teamMatches.length ? `
+          <h3 class="verify-subhead">ตารางแข่งของทีม ${esc(v.teamLabel)}</h3>
+          <div class="verify-matches">${v.teamMatches.map((m, i) =>
+            matchHtml(m, v.teamKey, TEAM_STYLE[v.teamKey] || TEAM_STYLE.soccer4x4, i)).join('')}</div>` : ''}
+        ${v.events && v.events.length ? `
+          <h3 class="verify-subhead">รายการแข่งอื่น ๆ ของคุณ</h3>
+          <div class="member-timetable">${memberEventGroupsHtml(v.events, v.teamKey, v.memberIndex)}</div>`
+          : ''}
         <div style="margin-top:16px">
           ${v.verifiedAt
             ? `<p class="muted" style="margin-bottom:10px">${icon('check')} คุณยืนยันข้อมูลนี้แล้วเมื่อ ${esc(relTime(v.verifiedAt))}</p>`
@@ -1789,6 +1794,7 @@ el('app').addEventListener('submit', async (e) => {
       teamKey: res.teamKey, memberIndex: res.memberIndex, teamLabel: res.teamLabel,
       name: res.name, code: res.code, role: res.role, mainEvent: res.mainEvent,
       events: res.events, profile: res.profile, verifiedAt: res.verified,
+      teamMatches: res.teamMatches,
     };
     verifyError = '';
   } catch (ex) {

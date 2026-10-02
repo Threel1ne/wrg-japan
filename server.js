@@ -358,6 +358,7 @@ const ROUTES = {
         ok: true, teamKey, memberIndex, teamLabel: team.name,
         name: member.name, code: member.code, role: member.role, mainEvent: member.mainEvent,
         events: member.events, profile: member.profile, verified: member.verified || null,
+        teamMatches: team.matches,
       });
     }
 

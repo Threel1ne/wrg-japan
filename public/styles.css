@@ -747,6 +747,10 @@ main.container { padding-top: 24px; padding-bottom: 8px; }
 @media (max-width: 560px) { .verify-fields { grid-template-columns: 1fr; } }
 .verify-field { display: flex; flex-direction: column; gap: 2px; font-size: .88rem; }
 .verify-field .muted { font-size: .76rem; }
+.verify-subhead {
+  margin: 18px 0 8px; padding-top: 14px; border-top: 1px solid var(--line);
+  font-size: .86rem; font-weight: 700; color: var(--ink-2);
+}
 
 /* ----------------------------------------------------------- announcements */
 
