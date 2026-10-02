@@ -569,6 +569,54 @@ const PROFILE_FIELD_LABELS = [
   ['nationalId', 'เลขบัตรประชาชน'],
 ];
 
+/** Every member of every team, flattened and merged by identity (national
+    ID, falling back to name) — so a person on more than one roster (e.g.
+    a mentor) appears once with every team they're on, same grouping as
+    /api/verify uses server-side. Admin-only: relies on profile.nationalId,
+    which a non-admin /api/state response never includes. */
+function allMembersMerged() {
+  const raw = [];
+  for (const key of Object.keys(state.teams)) {
+    const team = state.teams[key];
+    team.members.forEach((mb, i) => raw.push({ teamKey: key, memberIndex: i, teamLabel: team.name, member: mb }));
+  }
+  const groups = new Map();
+  for (const r of raw) {
+    const k = r.member.profile?.nationalId || r.member.name.replace(/\s+/g, ' ').trim();
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(r);
+  }
+  return [...groups.values()].map((entries) => ({
+    name: entries[0].member.name,
+    code: entries[0].member.code,
+    teamLabels: entries.map((e) => e.teamLabel).join(', '),
+    verifiedAt: entries.map((e) => e.member.verified).filter(Boolean).sort().pop() || null,
+  }));
+}
+
+/** Admin-only: everyone's verify status in one place, instead of checking
+    each team roster individually. */
+function verifySummaryHtml() {
+  const list = allMembersMerged();
+  const done = list.filter((m) => m.verifiedAt).length;
+  const sorted = [...list].sort((a, b) => (a.verifiedAt ? 1 : 0) - (b.verifiedAt ? 1 : 0));
+  return `
+    <div class="card admin-only verify-summary">
+      <div class="verify-summary-head">
+        <h3 class="verify-subhead" style="margin:0; padding-top:0; border-top:0">สถานะการยืนยันของทุกคน</h3>
+        <span class="muted">${done} / ${list.length} คน</span>
+      </div>
+      ${sorted.map((m) => `
+        <div class="verify-summary-row">
+          <span>${esc(m.name)}${m.code ? ` <span class="code-chip">${esc(m.code)}</span>` : ''}</span>
+          <span class="muted">${esc(m.teamLabels)}</span>
+          ${m.verifiedAt
+            ? `<span class="chip verified">${icon('check')}ยืนยันแล้ว · ${esc(relTime(m.verifiedAt))}</span>`
+            : '<span class="chip">ยังไม่ยืนยัน</span>'}
+        </div>`).join('')}
+    </div>`;
+}
+
 /** Self-serve check: a team member types their date of birth — that alone
     identifies them, since no two *different* people share one — and
     confirms it's correct. No login, no name picker: typing the right date
@@ -644,6 +692,7 @@ function renderVerify() {
           <button class="btn outline sm admin-only" data-copy-verify-link>${icon('check')}คัดลอกลิงก์ส่งให้ทีม</button>
         </div>
       </div>
+      ${state.admin ? verifySummaryHtml() : ''}
       ${body}
     </div>`;
 }

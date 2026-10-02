@@ -752,6 +752,19 @@ main.container { padding-top: 24px; padding-bottom: 8px; }
   font-size: .86rem; font-weight: 700; color: var(--ink-2);
 }
 
+.verify-summary { margin-bottom: 13px; }
+.verify-summary-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px;
+}
+.verify-summary-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+  padding: 10px 0; border-top: 1px solid var(--line);
+  font-size: .88rem;
+}
+.verify-summary-row:first-of-type { border-top: 0; padding-top: 0; }
+.verify-summary-row > span:first-child { flex: 1; min-width: 160px; }
+
 /* ----------------------------------------------------------- announcements */
 
 .post {
