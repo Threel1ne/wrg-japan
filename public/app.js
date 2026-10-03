@@ -633,7 +633,7 @@ function renderVerify() {
       <form id="verify-dob-form" class="card verify-detail">
         <label for="verify-dob">วันเกิดของคุณ</label>
         <input type="text" id="verify-dob" class="verify-select" placeholder="วว/ดด/ปปปป"
-          pattern="\\d{1,2}/\\d{1,2}/\\d{4}" inputmode="numeric" required>
+          pattern="\\d{1,2}/\\d{1,2}/\\d{4}" required>
         ${verifyError ? `<p class="error" style="margin-top:8px">${esc(verifyError)}</p>` : ''}
         <button type="submit" class="btn primary" style="margin-top:14px">${icon('shield')}ตรวจสอบ</button>
       </form>`;
@@ -1486,7 +1486,7 @@ function openRecordEditor(teamKey, kind, index, memberIndex = null) {
       input = `<textarea data-f="${f.k}" rows="3"${ph}>${esc(val)}</textarea>`;
     } else if (f.type === 'ddmmyyyy') {
       input = `<input type="text" data-f="${f.k}" value="${esc(val)}"${ph}${req}` +
-        ' pattern="\\d{1,2}/\\d{1,2}/\\d{4}" inputmode="numeric">';
+        ' pattern="\\d{1,2}/\\d{1,2}/\\d{4}">';
     } else {
       input = `<input type="${f.type === 'tags' ? 'text' : f.type}" data-f="${f.k}" value="${esc(val)}"${ph}${req}>`;
     }
