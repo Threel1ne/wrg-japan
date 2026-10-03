@@ -601,7 +601,7 @@ function verifySummaryHtml() {
   const done = list.filter((m) => m.verifiedAt).length;
   const sorted = [...list].sort((a, b) => (a.verifiedAt ? 1 : 0) - (b.verifiedAt ? 1 : 0));
   return `
-    <div class="card admin-only verify-summary">
+    <div class="card verify-summary">
       <div class="verify-summary-head">
         <h3 class="verify-subhead" style="margin:0; padding-top:0; border-top:0">สถานะการยืนยันของทุกคน</h3>
         <span class="muted">${done} / ${list.length} คน</span>
