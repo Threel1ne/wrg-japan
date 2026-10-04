@@ -740,6 +740,12 @@ main.container { padding-top: 24px; padding-bottom: 8px; }
   box-shadow: 0 0 0 4px rgba(46,179,88,.20);
 }
 .verify-detail { margin-top: 13px; }
+.verify-detail label {
+  display: block; margin: 16px 0 6px;
+  font-size: .81rem; font-weight: 700; color: var(--ink-2);
+}
+.verify-detail label:first-of-type { margin-top: 0; }
+.verify-detail .verify-select { margin-top: 0; }
 .verify-fields {
   display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px;
   margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line);
@@ -752,18 +758,31 @@ main.container { padding-top: 24px; padding-bottom: 8px; }
   font-size: .86rem; font-weight: 700; color: var(--ink-2);
 }
 
-.verify-summary { margin-bottom: 13px; }
-.verify-summary-head {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 10px;
+/* -------------------------------------------------------- person full page */
+
+#person-edit-form label {
+  display: block; margin: 16px 0 6px;
+  font-size: .81rem; font-weight: 700; color: var(--ink-2);
 }
-.verify-summary-row {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
-  padding: 10px 0; border-top: 1px solid var(--line);
-  font-size: .88rem;
+#person-edit-form label:first-of-type { margin-top: 0; }
+
+.person-header { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.person-photo { display: flex; flex-direction: column; align-items: center; gap: 8px; flex: none; }
+.person-photo img {
+  width: 96px; height: 96px; object-fit: cover; border-radius: var(--r-lg);
+  border: 1px solid var(--glass-edge); box-shadow: var(--shadow);
 }
-.verify-summary-row:first-of-type { border-top: 0; padding-top: 0; }
-.verify-summary-row > span:first-child { flex: 1; min-width: 160px; }
+.person-photo-placeholder {
+  width: 96px; height: 96px; border-radius: var(--r-lg);
+  display: grid; place-items: center;
+  background: var(--brand-tint); color: var(--brand);
+  border: 1px solid var(--glass-edge);
+}
+.person-photo-placeholder .ic { width: 40px; height: 40px; }
+.person-photo-sm {
+  width: 56px; height: 56px; object-fit: cover; border-radius: var(--r-sm);
+  border: 1px solid var(--glass-edge); flex: none;
+}
 
 /* ----------------------------------------------------------- announcements */
 
@@ -831,7 +850,6 @@ main.container { padding-top: 24px; padding-bottom: 8px; }
 }
 .chip.team-ball   { background: linear-gradient(180deg, rgba(255,255,255,.7), var(--ball-tint));   border-color: rgba(190,58,29,.28); color: var(--ball); }
 .chip.team-soccer { background: linear-gradient(180deg, rgba(255,255,255,.7), var(--soccer-tint)); border-color: rgba(29,108,226,.28); color: var(--soccer); }
-.chip.verified    { background: linear-gradient(180deg, rgba(255,255,255,.7), var(--brand-tint)); border-color: rgba(46,179,88,.35); color: var(--brand-ink); }
 
 /* ----------------------------------------------------------------- buttons */
 

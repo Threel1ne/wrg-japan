@@ -6,3 +6,4 @@ node_modules/
 data/db.json
 data/admin.json
 data/FIRST-RUN-PASSWORD.txt
+.env*

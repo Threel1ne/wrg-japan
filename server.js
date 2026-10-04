@@ -186,6 +186,29 @@ function sanitizeProfile(p) {
 
 const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
 
+/** Every (teamKey, memberIndex) entry whose profile.dob matches, grouped by
+    identity (national ID, falling back to name) — see api/verify.js (the
+    Vercel+Supabase mode) for the full rationale; kept identical here. */
+function findIdentityGroup(dob) {
+  const matches = [];
+  for (const [teamKey, team] of Object.entries(db.teams)) {
+    team.members.forEach((member, memberIndex) => {
+      if (member.profile?.dob === dob) matches.push({ teamKey, memberIndex, team, member });
+    });
+  }
+  if (!matches.length) return { entries: null, ambiguous: false };
+
+  const identityKey = (m) => m.member.profile?.nationalId || norm(m.member.name);
+  const groups = new Map();
+  for (const m of matches) {
+    const k = identityKey(m);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(m);
+  }
+  if (groups.size > 1) return { entries: null, ambiguous: true };
+  return { entries: [...groups.values()][0], ambiguous: false };
+}
+
 // ---------------------------------------------------------------------- admin
 
 const ROUTES = {
@@ -277,9 +300,9 @@ const ROUTES = {
       members: (Array.isArray(t.members) ? t.members : []).slice(0, 60).map((m) => ({
         name: str(m.name, 120), role: str(m.role, 120), code: str(m.code, 60),
         mainEvent: ['soccer4x4', 'ballfighting', 'both', 'none'].includes(m.mainEvent) ? m.mainEvent : '',
-        // set only by the public /api/verify route (op "confirm") — preserved here
-        // so a normal admin edit (adding a match, etc.) doesn't wipe it.
-        verified: typeof m.verified === 'string' ? m.verified : null,
+        // filename of their photo inside their own member-files folder (see
+        // /api/verify) — '' until admin uploads one.
+        photoName: str(m.photoName, 300),
         profile: sanitizeProfile(m.profile),
         // other events this member also competes in (e.g. SumoBOT Junior) —
         // small dated entries, same shape as team matches, so each person
@@ -333,8 +356,9 @@ const ROUTES = {
   // only a DOB genuinely shared by two different people still errors out.
   // Rate-limited per IP so DOB can't be brute-forced across the roster.
   //
-  // op "confirm" — stamps a verified timestamp on every team entry for
-  // that person at once. Can't change any other data.
+  // Read-only — no self-edit, no confirm. Per-person file storage (QR
+  // codes, passport scans, …) is Vercel+Supabase-only, same as the
+  // ไฟล์เอกสาร tab — this legacy local mode never got either.
   'POST /api/verify': async (req, res) => {
     const body = await readJsonBody(req);
 
@@ -344,33 +368,11 @@ const ROUTES = {
       const dob = str(body.dob, 40);
       if (!dob) return send(res, 400, { error: 'กรุณากรอกวันเกิด' });
 
-      const matches = [];
-      for (const [teamKey, team] of Object.entries(db.teams)) {
-        team.members.forEach((member, memberIndex) => {
-          if (member.profile?.dob === dob) matches.push({ teamKey, memberIndex, team, member });
-        });
-      }
-      if (!matches.length) {
-        return send(res, 404, { error: 'ไม่พบข้อมูลที่ตรงกับวันเกิดนี้ กรุณาตรวจสอบวันที่อีกครั้ง หรือติดต่อผู้ดูแลทีม' });
-      }
-
-      // A person on more than one team roster (e.g. a mentor on both teams)
-      // has the same DOB on both entries — group by national ID (or name)
-      // into one merged person instead of rejecting as ambiguous. Only a
-      // DOB genuinely shared by two different people still errors out.
-      const identityKey = (m) => m.member.profile?.nationalId || norm(m.member.name);
-      const groups = new Map();
-      for (const m of matches) {
-        const k = identityKey(m);
-        if (!groups.has(k)) groups.set(k, []);
-        groups.get(k).push(m);
-      }
-      if (groups.size > 1) {
-        return send(res, 409, { error: 'พบข้อมูลมากกว่าหนึ่งรายการสำหรับวันเกิดนี้ กรุณาติดต่อผู้ดูแลทีม' });
-      }
+      const { entries, ambiguous } = findIdentityGroup(dob);
+      if (ambiguous) return send(res, 409, { error: 'พบข้อมูลมากกว่าหนึ่งรายการสำหรับวันเกิดนี้ กรุณาติดต่อผู้ดูแลทีม' });
+      if (!entries) return send(res, 404, { error: 'ไม่พบข้อมูลที่ตรงกับวันเกิดนี้ กรุณาตรวจสอบวันที่อีกครั้ง หรือติดต่อผู้ดูแลทีม' });
 
       loginAttempts.delete(ip);
-      const entries = [...groups.values()][0];
       const first = entries[0].member;
 
       const seenEvents = new Set();
@@ -381,34 +383,14 @@ const ROUTES = {
           if (!seenEvents.has(k)) { seenEvents.add(k); events.push(ev); }
         }
       }
-      const verifiedAt = entries.map((e) => e.member.verified).filter(Boolean).sort().pop() || null;
 
       return send(res, 200, {
         ok: true,
         teams: entries.map((e) => ({ teamKey: e.teamKey, memberIndex: e.memberIndex, teamLabel: e.team.name, matches: e.team.matches })),
         name: first.name, code: first.code, role: first.role, mainEvent: first.mainEvent,
-        events, profile: first.profile, verified: verifiedAt,
+        photoName: first.photoName || '',
+        events, profile: first.profile,
       });
-    }
-
-    if (body.op === 'confirm') {
-      const targets = Array.isArray(body.targets) && body.targets.length
-        ? body.targets
-        : [{ teamKey: body.teamKey, memberIndex: body.memberIndex }];
-
-      const now = new Date().toISOString();
-      let any = false;
-      for (const t of targets) {
-        const teamKey = str(t.teamKey, 40);
-        const memberIndex = Number(t.memberIndex);
-        const team = db.teams[teamKey];
-        const member = team && Number.isInteger(memberIndex) ? team.members[memberIndex] : null;
-        if (member) { member.verified = now; any = true; }
-      }
-      if (!any) return send(res, 404, { error: 'ไม่พบรายชื่อนี้' });
-
-      await saveDb();
-      return send(res, 200, { ok: true, verifiedAt: now, rev: db.rev });
     }
 
     send(res, 400, { error: 'คำขอไม่ถูกต้อง' });

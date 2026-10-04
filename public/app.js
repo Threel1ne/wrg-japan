@@ -105,8 +105,14 @@ let state = null;
 let view = 'overview';
 let filesPath = '';        // current folder in the ไฟล์เอกสาร tab ('' = root)
 let filesListing = null;   // { folders, files } for filesPath, or null while (re)loading
-let verifyUnlocked = null; // full lookup result (name, team, profile, verifiedAt, …) once the DOB check passes
+let verifyUnlocked = null; // full lookup result (name, team, profile, …) once the DOB check passes
+let verifyDob = '';        // the DOB that unlocked it — resent on files-* calls (there's no session)
 let verifyError = '';      // error from the last failed DOB check, shown inline
+let verifyFiles = null;    // this person's own documents, or null while (re)loading
+let verifyPhotoUrl = null; // signed URL for their profile photo, or null if none/not loaded yet
+let personView = null;      // { teamKey, memberIndex } — admin's full-page view of one person (view === 'person')
+let personFilesList = null; // that person's documents, or null while (re)loading
+let personPhotoUrl = null;  // signed URL for their profile photo, or null if none/not loaded yet
 const SEEN_KEY = 'wrg2026.seen.v1';
 
 // A shared link like "?verify=1" (or "?view=verify") opens straight into the
@@ -515,9 +521,6 @@ function renderTeam(key) {
               <div class="match-body">
                 <div class="match-label">${esc(mb.name)}
                   ${mb.code ? `<span class="code-chip">${esc(mb.code)}</span>` : ''}
-                  ${mb.verified
-                    ? `<span class="chip verified">${icon('check')}ยืนยันแล้ว · ${esc(relTime(mb.verified))}</span>`
-                    : '<span class="chip">ยังไม่ยืนยันข้อมูล</span>'}
                 </div>
                 ${mb.role || mb.mainEvent
                   ? `<div class="match-note">${[mb.role, mb.mainEvent ? MAIN_EVENT_LABEL[mb.mainEvent] : '']
@@ -530,7 +533,10 @@ function renderTeam(key) {
                   <button class="btn outline sm" data-rec-add="${esc(key)}:memberEvent:${i}">${icon('plus')}เพิ่มรายการแข่งอื่น</button>
                 </div>
               </div>
-              ${rowTools(key, 'member', i)}
+              <span class="row-tools admin-only">
+                <button class="btn outline sm" data-goto-person="${esc(key)}:${i}" title="ข้อมูลและไฟล์ของสมาชิก">${icon('edit')}ข้อมูล</button>
+                <button class="btn danger sm" data-rec-del="${esc(key)}:member:${i}" title="ลบ">${icon('trash')}</button>
+              </span>
             </div>`).join('')
           : '<p class="muted">ยังไม่ได้เพิ่มรายชื่อสมาชิก</p>'}
         ${addBtn(key, 'member', 'เพิ่มสมาชิก')}
@@ -568,64 +574,17 @@ const PROFILE_FIELD_LABELS = [
   ['foodNote', 'อาหาร / ข้อจำกัดด้านอาหาร'],
   ['nationalId', 'เลขบัตรประชาชน'],
 ];
+const DDMMYYYY_PROFILE_KEYS = new Set(['dob', 'passportIssue', 'passportExpiry']);
 
-/** Every member of every team, flattened and merged by identity (national
-    ID, falling back to name) — so a person on more than one roster (e.g.
-    a mentor) appears once with every team they're on, same grouping as
-    /api/verify uses server-side. Admin-only: relies on profile.nationalId,
-    which a non-admin /api/state response never includes. */
-function allMembersMerged() {
-  const raw = [];
-  for (const key of Object.keys(state.teams)) {
-    const team = state.teams[key];
-    team.members.forEach((mb, i) => raw.push({ teamKey: key, memberIndex: i, teamLabel: team.name, member: mb }));
-  }
-  const groups = new Map();
-  for (const r of raw) {
-    const k = r.member.profile?.nationalId || r.member.name.replace(/\s+/g, ' ').trim();
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push(r);
-  }
-  return [...groups.values()].map((entries) => ({
-    name: entries[0].member.name,
-    code: entries[0].member.code,
-    teamLabels: entries.map((e) => e.teamLabel).join(', '),
-    verifiedAt: entries.map((e) => e.member.verified).filter(Boolean).sort().pop() || null,
-  }));
-}
-
-/** Admin-only: everyone's verify status in one place, instead of checking
-    each team roster individually. */
-function verifySummaryHtml() {
-  const list = allMembersMerged();
-  const done = list.filter((m) => m.verifiedAt).length;
-  const sorted = [...list].sort((a, b) => (a.verifiedAt ? 1 : 0) - (b.verifiedAt ? 1 : 0));
-  return `
-    <div class="card verify-summary">
-      <div class="verify-summary-head">
-        <h3 class="verify-subhead" style="margin:0; padding-top:0; border-top:0">สถานะการยืนยันของทุกคน</h3>
-        <span class="muted">${done} / ${list.length} คน</span>
-      </div>
-      ${sorted.map((m) => `
-        <div class="verify-summary-row">
-          <span>${esc(m.name)}${m.code ? ` <span class="code-chip">${esc(m.code)}</span>` : ''}</span>
-          <span class="muted">${esc(m.teamLabels)}</span>
-          ${m.verifiedAt
-            ? `<span class="chip verified">${icon('check')}ยืนยันแล้ว · ${esc(relTime(m.verifiedAt))}</span>`
-            : '<span class="chip">ยังไม่ยืนยัน</span>'}
-        </div>`).join('')}
-    </div>`;
-}
-
-/** Self-serve check: a team member types their date of birth — that alone
-    identifies them, since no two *different* people share one — and
-    confirms it's correct. No login, no name picker: typing the right date
-    of birth both finds and proves who you are in one step. Someone on more
-    than one team roster (e.g. a mentor) gets one merged result covering
-    every team they're on — see verifyUnlocked.teams below. The sensitive
-    half of a member's record (passport, DOB, food note, …) is never sent to
-    the browser until that DOB is typed; see /api/verify (op "lookup"). The
-    link is shareable as-is, or with "?verify=1" to land here directly. */
+/** Self-serve lookup: a team member types their date of birth — that alone
+    identifies them, since no two *different* people share one — and sees
+    their own info and documents. Read-only: no editing, no confirming.
+    Someone on more than one team roster (e.g. a mentor) sees one combined
+    result covering every team they're on — see verifyUnlocked.teams below.
+    The sensitive half of a member's record (passport, DOB, food note, …) is
+    never sent to the browser until that DOB is typed; see /api/verify (op
+    "lookup"). The link is shareable as-is, or with "?verify=1" to land here
+    directly. */
 function renderVerify() {
   let body;
   if (!verifyUnlocked) {
@@ -635,7 +594,7 @@ function renderVerify() {
         <input type="text" id="verify-dob" class="verify-select" placeholder="วว/ดด/ปปปป"
           pattern="\\d{1,2}/\\d{1,2}/\\d{4}" required>
         ${verifyError ? `<p class="error" style="margin-top:8px">${esc(verifyError)}</p>` : ''}
-        <button type="submit" class="btn primary" style="margin-top:14px">${icon('shield')}ตรวจสอบ</button>
+        <button type="submit" class="btn primary" style="margin-top:14px">${icon('shield')}ค้นหา</button>
       </form>`;
   } else {
     const v = verifyUnlocked;
@@ -643,24 +602,39 @@ function renderVerify() {
     const profileRows = PROFILE_FIELD_LABELS
       .filter(([k]) => p[k])
       .map(([k, label]) => {
-        const val = (k === 'dob' || k === 'passportIssue' || k === 'passportExpiry') ? thaiDate(p[k]) : p[k];
+        const val = DDMMYYYY_PROFILE_KEYS.has(k) ? thaiDate(p[k]) : p[k];
         return `<div class="verify-field"><span class="muted">${esc(label)}</span><span>${esc(val)}</span></div>`;
       }).join('');
 
     const teamLabels = v.teams.map((t) => t.teamLabel).join(', ');
-    // a person listed on more than one roster (e.g. a mentor) edits their
-    // personal events through the first team entry — the main team page
-    // still lets admin edit either entry individually.
     const first = v.teams[0];
+
+    const filesHtml = verifyFiles === null
+      ? '<p class="muted" style="margin-top:10px">กำลังโหลด…</p>'
+      : !verifyFiles.length
+        ? '<p class="muted" style="margin-top:10px">ยังไม่มีเอกสาร</p>'
+        : `<div class="files-browser">${verifyFiles.map((f) => `
+            <div class="files-row">
+              <span class="files-row-icon">${icon('clipboard')}</span>
+              <span class="files-row-name files-row-clickable" data-verify-file-download="${esc(f.name)}">${esc(f.name)}</span>
+              <span class="files-row-meta muted">${esc(fileSizeLabel(f.size))}</span>
+            </div>`).join('')}</div>`;
 
     body = `
       <div class="card verify-detail">
-        <div class="match-label">${esc(v.name)}
-          ${v.code ? `<span class="code-chip">${esc(v.code)}</span>` : ''}
+        <div class="person-header">
+          ${verifyPhotoUrl ? `<img class="person-photo-sm" src="${esc(verifyPhotoUrl)}" alt="">` : ''}
+          <div>
+            <div class="match-label">${esc(v.name)}
+              ${v.code ? `<span class="code-chip">${esc(v.code)}</span>` : ''}
+            </div>
+            <div class="match-note">ทีม: ${esc(teamLabels)}${v.role ? ' · ' + esc(v.role) : ''}
+              ${v.mainEvent ? ' · รายการที่แข่ง: ' + esc(MAIN_EVENT_LABEL[v.mainEvent]) : ''}</div>
+          </div>
         </div>
-        <div class="match-note">ทีม: ${esc(teamLabels)}${v.role ? ' · ' + esc(v.role) : ''}
-          ${v.mainEvent ? ' · รายการที่แข่ง: ' + esc(MAIN_EVENT_LABEL[v.mainEvent]) : ''}</div>
         ${profileRows ? `<div class="verify-fields">${profileRows}</div>` : ''}
+        <h3 class="verify-subhead">เอกสารของคุณ</h3>
+        ${filesHtml}
         ${v.teams.filter((t) => t.matches && t.matches.length).map((t) => `
           <h3 class="verify-subhead">ตารางแข่งของทีม ${esc(t.teamLabel)}</h3>
           <div class="verify-matches">${t.matches.map((m, i) =>
@@ -670,16 +644,10 @@ function renderVerify() {
           <div class="member-timetable">${memberEventGroupsHtml(v.events, first.teamKey, first.memberIndex)}</div>`
           : ''}
         <div style="margin-top:16px">
-          ${v.verifiedAt
-            ? `<p class="muted" style="margin-bottom:10px">${icon('check')} คุณยืนยันข้อมูลนี้แล้วเมื่อ ${esc(relTime(v.verifiedAt))}</p>`
-            : ''}
-          <button class="btn primary" data-verify-confirm>
-            ${icon('check')}${v.verifiedAt ? 'ยืนยันอีกครั้ง' : 'ยืนยันว่าข้อมูลถูกต้อง'}
-          </button>
-          <button type="button" class="btn outline" data-verify-reset>${icon('chevron')}ตรวจสอบรายชื่ออื่น</button>
+          <button type="button" class="btn outline" data-verify-reset>${icon('chevron')}ค้นหารายชื่ออื่น</button>
         </div>
         <p class="muted" style="margin-top:12px">
-          ถ้าข้อมูลด้านบนไม่ถูกต้อง กรุณาติดต่อผู้ดูแลทีมเพื่อแก้ไข — ไม่ต้องกดยืนยัน
+          ถ้าข้อมูลด้านบนไม่ถูกต้อง กรุณาติดต่อผู้ดูแลทีมเพื่อแก้ไข
         </p>
       </div>`;
   }
@@ -687,12 +655,11 @@ function renderVerify() {
   return `
     <div class="section">
       <div class="section-head">
-        <h2>${icon('shield')}ตรวจสอบข้อมูลของคุณ</h2>
+        <h2>${icon('shield')}ค้นหาข้อมูลของคุณ</h2>
         <div class="head-actions">
           <button class="btn outline sm admin-only" data-copy-verify-link>${icon('check')}คัดลอกลิงก์ส่งให้ทีม</button>
         </div>
       </div>
-      ${state.admin ? verifySummaryHtml() : ''}
       ${body}
     </div>`;
 }
@@ -1056,6 +1023,120 @@ function fileSizeLabel(bytes) {
   return (bytes / 1024 / 1024).toFixed(1) + ' MB';
 }
 
+/** Admin: navigate to one person's full-page profile — editable fields,
+    photo, and their document folder (passport scan, Visit Japan QR code, …,
+    stored in its own Supabase bucket the public side never touches). */
+function goToPerson(teamKey, memberIndex) {
+  const member = state.teams[teamKey]?.members[memberIndex];
+  if (!member) return;
+  personView = { teamKey, memberIndex };
+  personFilesList = null;
+  personPhotoUrl = null;
+  setView('person');
+  loadPersonFilesList();
+  if (member.photoName) loadPersonPhoto();
+}
+
+async function loadPersonFilesList() {
+  if (!personView) return;
+  try {
+    const res = await api('POST', '/api/verify', { op: 'admin-files-list', ...personView });
+    personFilesList = res.files;
+  } catch (ex) {
+    toast(ex.message, { bad: true });
+    personFilesList = [];
+  }
+  render();
+}
+
+async function loadPersonPhoto() {
+  const member = state.teams[personView.teamKey]?.members[personView.memberIndex];
+  if (!personView || !member?.photoName) return;
+  try {
+    const res = await api('POST', '/api/verify', { op: 'admin-files-download-url', ...personView, name: member.photoName });
+    personPhotoUrl = res.signedUrl;
+  } catch { /* photo just won't show — not fatal */ }
+  render();
+}
+
+/** One form field for the person-edit form — mirrors how PROFILE_FIELD_LABELS
+    fields are read back on submit (see the 'person-edit-form' handler). */
+function personFieldHtml(id, label, value, opts = {}) {
+  if (opts.type === 'select') {
+    return `<label for="${id}">${esc(label)}</label>
+      <select id="${id}" class="verify-select">${Object.entries(opts.options).map(([k, v]) =>
+        `<option value="${k}"${k === value ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select>`;
+  }
+  const dateAttrs = opts.isDate ? ' pattern="\\d{1,2}/\\d{1,2}/\\d{4}" placeholder="วว/ดด/ปปปป"' : '';
+  return `<label for="${id}">${esc(label)}</label>
+    <input type="text" id="${id}" class="verify-select" value="${esc(value)}"${dateAttrs}>`;
+}
+
+function renderPersonPage() {
+  if (!state.admin) return '<div class="section"><p class="muted">ต้องเข้าสู่ระบบก่อน</p></div>';
+  const { teamKey, memberIndex } = personView || {};
+  const team = state.teams[teamKey];
+  const mb = team?.members[memberIndex];
+  if (!mb) return '<div class="section"><p class="muted">ไม่พบข้อมูล</p></div>';
+  const p = mb.profile || {};
+
+  const filesHtml = personFilesList === null
+    ? '<p class="muted">กำลังโหลด…</p>'
+    : !personFilesList.length
+      ? '<p class="muted">ยังไม่มีไฟล์</p>'
+      : `<div class="files-browser">${personFilesList.map((f) => `
+          <div class="files-row">
+            <span class="files-row-icon">${icon('clipboard')}</span>
+            <span class="files-row-name files-row-clickable" data-person-file-download="${esc(f.name)}">${esc(f.name)}</span>
+            <span class="files-row-meta muted">${esc(fileSizeLabel(f.size))}</span>
+            <span class="files-row-tools">
+              <button class="btn danger sm" data-person-file-delete="${esc(f.name)}" title="ลบ">${icon('trash')}</button>
+            </span>
+          </div>`).join('')}</div>`;
+
+  return `
+    <div class="section">
+      <button type="button" class="btn outline sm" data-goto="${esc(teamKey)}">‹ กลับไปหน้าทีม</button>
+
+      <div class="person-header card">
+        <div class="person-photo">
+          ${personPhotoUrl ? `<img src="${esc(personPhotoUrl)}" alt="">` : `<div class="person-photo-placeholder">${icon('users')}</div>`}
+          <button type="button" class="btn outline sm" data-person-photo-trigger>${icon('plus')}${mb.photoName ? 'เปลี่ยนรูป' : 'เพิ่มรูป'}</button>
+          <input type="file" id="person-photo-input" accept="image/*" class="hidden">
+        </div>
+        <div>
+          <h2 style="margin:0">${esc(mb.name)}${mb.code ? ` <span class="code-chip">${esc(mb.code)}</span>` : ''}</h2>
+          <p class="muted" style="margin:4px 0 0">${esc(team.name)}${mb.role ? ' · ' + esc(mb.role) : ''}</p>
+        </div>
+      </div>
+
+      <form id="person-edit-form" class="card" style="margin-top:13px">
+        <h3 class="verify-subhead" style="margin-top:0; padding-top:0; border-top:0">ข้อมูลทั่วไป</h3>
+        ${personFieldHtml('pf-name', 'ชื่อ–นามสกุล', mb.name)}
+        ${personFieldHtml('pf-code', 'รหัสประจำตัว', mb.code)}
+        ${personFieldHtml('pf-role', 'ตำแหน่ง / หน้าที่', mb.role)}
+        ${personFieldHtml('pf-mainEvent', 'รายการที่แข่ง (รายการหลัก)', mb.mainEvent, { type: 'select', options: MAIN_EVENT_LABEL })}
+        <h3 class="verify-subhead">เอกสารส่วนตัว</h3>
+        ${PROFILE_FIELD_LABELS.map(([k, label]) => {
+          const isDate = DDMMYYYY_PROFILE_KEYS.has(k);
+          return personFieldHtml(`pf-${k}`, label, isDate ? isoToDdmmyyyy(p[k]) : (p[k] || ''), { isDate });
+        }).join('')}
+        <div style="margin-top:14px">
+          <button type="submit" class="btn primary">${icon('check')}บันทึก</button>
+        </div>
+      </form>
+
+      <div class="card" style="margin-top:13px">
+        <div class="section-head" style="margin-bottom:10px">
+          <h3 class="verify-subhead" style="margin:0; padding-top:0; border-top:0">ไฟล์เอกสาร</h3>
+          <button type="button" class="btn outline sm" data-person-files-upload-trigger>${icon('plus')}เพิ่มไฟล์</button>
+        </div>
+        <input type="file" id="person-files-upload-input" multiple class="hidden">
+        ${filesHtml}
+      </div>
+    </div>`;
+}
+
 function filesNavigate(newPath) {
   filesPath = newPath;
   filesListing = null;
@@ -1186,6 +1267,7 @@ function render() {
     view === 'travel'    ? renderTravel()    :
     view === 'files'     ? renderFiles()     :
     view === 'verify'    ? renderVerify()    :
+    view === 'person'    ? renderPersonPage() :
     view === 'updates'   ? renderUpdates()   :
     state.teams[view]    ? renderTeam(view)  : renderOverview();
 
@@ -1679,7 +1761,9 @@ el('app').addEventListener('click', async (e) => {
     '[data-goto],[data-new-post],[data-edit-post],[data-del-post],[data-edit-json],[data-edit-team],'
     + '[data-logout],[data-mark-read],[data-rec],[data-rec-del],[data-rec-add],'
     + '[data-files-nav],[data-files-mkdir],[data-files-upload-trigger],[data-files-download],[data-files-delete],'
-    + '[data-verify-confirm],[data-verify-reset],[data-copy-verify-link]'
+    + '[data-verify-reset],[data-verify-file-download],[data-copy-verify-link],'
+    + '[data-goto-person],[data-person-photo-trigger],[data-person-files-upload-trigger],'
+    + '[data-person-file-download],[data-person-file-delete]'
   );
   if (!t) return;
 
@@ -1687,8 +1771,48 @@ el('app').addEventListener('click', async (e) => {
 
   if (t.hasAttribute('data-verify-reset')) {
     verifyUnlocked = null;
+    verifyDob = '';
     verifyError = '';
+    verifyFiles = null;
+    verifyPhotoUrl = null;
     render();
+    return;
+  }
+
+  if (t.dataset.verifyFileDownload) {
+    try {
+      const { signedUrl } = await api('POST', '/api/verify', { op: 'files-download-url', dob: verifyDob, name: t.dataset.verifyFileDownload });
+      window.open(signedUrl, '_blank', 'noopener');
+    } catch (ex) { toast(ex.message, { bad: true }); }
+    return;
+  }
+
+  if (t.dataset.gotoPerson) {
+    const [teamKey, memberIndex] = t.dataset.gotoPerson.split(':');
+    goToPerson(teamKey, Number(memberIndex));
+    return;
+  }
+
+  if (t.hasAttribute('data-person-photo-trigger')) return el('person-photo-input').click();
+  if (t.hasAttribute('data-person-files-upload-trigger')) return el('person-files-upload-input').click();
+
+  if (t.dataset.personFileDownload && personView) {
+    try {
+      const { signedUrl } = await api('POST', '/api/verify', { op: 'admin-files-download-url', ...personView, name: t.dataset.personFileDownload });
+      window.open(signedUrl, '_blank', 'noopener');
+    } catch (ex) { toast(ex.message, { bad: true }); }
+    return;
+  }
+
+  if (t.dataset.personFileDelete && personView) {
+    const name = t.dataset.personFileDelete;
+    if (!confirm(`ลบไฟล์ "${name}" ถาวรหรือไม่?`)) return;
+    try {
+      await api('POST', '/api/verify', { op: 'admin-files-delete', ...personView, name });
+      toast('ลบแล้ว', { icon: 'trash' });
+      personFilesList = null;
+      loadPersonFilesList();
+    } catch (ex) { toast(ex.message, { bad: true }); }
     return;
   }
 
@@ -1700,17 +1824,6 @@ el('app').addEventListener('click', async (e) => {
     } catch {
       toast(link, { icon: 'check' }); // clipboard blocked — show it so it can be copied by hand
     }
-    return;
-  }
-
-  if (t.hasAttribute('data-verify-confirm') && verifyUnlocked) {
-    const targets = verifyUnlocked.teams.map((x) => ({ teamKey: x.teamKey, memberIndex: x.memberIndex }));
-    try {
-      const res = await api('POST', '/api/verify', { op: 'confirm', targets });
-      verifyUnlocked.verifiedAt = res.verifiedAt;
-      await loadState();
-      toast('ยืนยันข้อมูลเรียบร้อยแล้ว ขอบคุณครับ/ค่ะ', { icon: 'check' });
-    } catch (ex) { toast(ex.message, { bad: true }); }
     return;
   }
 
@@ -1790,6 +1903,49 @@ el('app').addEventListener('click', async (e) => {
 });
 
 el('app').addEventListener('change', async (e) => {
+  /* person page: profile photo upload */
+  if (e.target.id === 'person-photo-input' && personView) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const oldName = state.teams[personView.teamKey]?.members[personView.memberIndex]?.photoName;
+    const newName = `photo-${Date.now()}-${file.name}`;
+    try {
+      const { signedUrl } = await api('POST', '/api/verify', { op: 'admin-files-upload-url', ...personView, name: newName });
+      const putRes = await fetch(signedUrl, { method: 'PUT', headers: { 'content-type': file.type || 'application/octet-stream' }, body: file });
+      if (!putRes.ok) throw new Error('อัปโหลดไม่สำเร็จ');
+
+      await saveTeamList(personView.teamKey, (team) => { team.members[personView.memberIndex].photoName = newName; });
+      if (oldName) {
+        try { await api('POST', '/api/verify', { op: 'admin-files-delete', ...personView, name: oldName }); }
+        catch { /* old photo left orphaned — harmless, not worth failing the upload over */ }
+      }
+      toast('อัปโหลดรูปแล้ว', { icon: 'check' });
+      personPhotoUrl = null;
+      loadPersonPhoto();
+      loadPersonFilesList();
+    } catch (ex) { toast(ex.message, { bad: true }); }
+    return;
+  }
+
+  /* person page: document upload */
+  if (e.target.id === 'person-files-upload-input' && personView) {
+    const fileList = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!fileList.length) return;
+    for (const file of fileList) {
+      try {
+        const { signedUrl } = await api('POST', '/api/verify', { op: 'admin-files-upload-url', ...personView, name: file.name });
+        const putRes = await fetch(signedUrl, { method: 'PUT', headers: { 'content-type': file.type || 'application/octet-stream' }, body: file });
+        if (!putRes.ok) throw new Error('อัปโหลดไม่สำเร็จ');
+        toast(`อัปโหลด "${file.name}" สำเร็จ`, { icon: 'check' });
+      } catch (ex) { toast(`${file.name}: ${ex.message}`, { bad: true }); }
+    }
+    personFilesList = null;
+    loadPersonFilesList();
+    return;
+  }
+
   /* file-manager upload */
   if (e.target.id === 'files-upload-input') {
     const fileList = Array.from(e.target.files || []);
@@ -1837,26 +1993,77 @@ el('app').addEventListener('change', async (e) => {
   }
 });
 
-el('app').addEventListener('submit', async (e) => {
-  if (e.target.id !== 'verify-dob-form') return;
-  e.preventDefault();
-  const dob = ddmmyyyyToIso(el('verify-dob').value);
-  if (!dob) {
-    verifyError = 'รูปแบบวันเกิดไม่ถูกต้อง — ใช้ วว/ดด/ปปปป';
-    return render();
-  }
+async function loadVerifyFiles() {
   try {
-    const res = await api('POST', '/api/verify', { op: 'lookup', dob });
-    verifyUnlocked = {
-      teams: res.teams, // [{ teamKey, memberIndex, teamLabel, matches }, …] — 2+ if on multiple rosters
-      name: res.name, code: res.code, role: res.role, mainEvent: res.mainEvent,
-      events: res.events, profile: res.profile, verifiedAt: res.verified,
-    };
-    verifyError = '';
-  } catch (ex) {
-    verifyError = ex.message;
+    const res = await api('POST', '/api/verify', { op: 'files-list', dob: verifyDob });
+    verifyFiles = res.files;
+  } catch {
+    verifyFiles = []; // not fatal — the rest of the page still works without it
   }
   render();
+}
+
+async function loadVerifyPhoto() {
+  if (!verifyUnlocked?.photoName) return;
+  try {
+    const res = await api('POST', '/api/verify', { op: 'files-download-url', dob: verifyDob, name: verifyUnlocked.photoName });
+    verifyPhotoUrl = res.signedUrl;
+  } catch { /* photo just won't show — not fatal */ }
+  render();
+}
+
+el('app').addEventListener('submit', async (e) => {
+  if (e.target.id === 'verify-dob-form') {
+    e.preventDefault();
+    const dob = ddmmyyyyToIso(el('verify-dob').value);
+    if (!dob) {
+      verifyError = 'รูปแบบวันเกิดไม่ถูกต้อง — ใช้ วว/ดด/ปปปป';
+      return render();
+    }
+    try {
+      const res = await api('POST', '/api/verify', { op: 'lookup', dob });
+      verifyUnlocked = {
+        teams: res.teams, // [{ teamKey, memberIndex, teamLabel, matches }, …] — 2+ if on multiple rosters
+        name: res.name, code: res.code, role: res.role, mainEvent: res.mainEvent,
+        photoName: res.photoName, events: res.events, profile: res.profile,
+      };
+      verifyDob = dob;
+      verifyError = '';
+      verifyFiles = null;
+      verifyPhotoUrl = null;
+      render();
+      loadVerifyFiles();
+      if (res.photoName) loadVerifyPhoto();
+    } catch (ex) {
+      verifyError = ex.message;
+      render();
+    }
+    return;
+  }
+
+  if (e.target.id === 'person-edit-form' && personView) {
+    e.preventDefault();
+    const patch = {
+      name: el('pf-name').value.trim(),
+      code: el('pf-code').value.trim(),
+      role: el('pf-role').value.trim(),
+      mainEvent: el('pf-mainEvent').value,
+      profile: {},
+    };
+    for (const [k] of PROFILE_FIELD_LABELS) {
+      const raw = el(`pf-${k}`).value.trim();
+      patch.profile[k] = DDMMYYYY_PROFILE_KEYS.has(k) ? ddmmyyyyToIso(raw) : raw;
+    }
+    try {
+      await saveTeamList(personView.teamKey, (team) => {
+        Object.assign(team.members[personView.memberIndex], patch);
+      });
+      toast('บันทึกข้อมูลแล้ว', { icon: 'check' });
+    } catch (ex) {
+      toast(ex.message, { bad: true });
+    }
+    return;
+  }
 });
 
 /* --------------------------------------------------------------- brand mark */
