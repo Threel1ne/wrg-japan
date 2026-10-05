@@ -307,7 +307,41 @@ button, input, select, textarea { font-family: inherit; font-size: 1rem; color: 
 /* ------------------------------------------------------------------ layout */
 
 main.container { padding-top: 24px; padding-bottom: 8px; }
-.loading { color: var(--muted); text-align: center; padding: 60px 0; }
+.loading {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 16px; padding: 70px 0; color: var(--muted);
+}
+.loading-gears { position: relative; width: 60px; height: 60px; }
+.loading-gears .ic {
+  position: absolute;
+  filter: drop-shadow(0 4px 10px rgba(18,56,35,.18));
+}
+.loading-gears .ic:first-child {
+  width: 44px; height: 44px; top: 0; left: 0;
+  color: var(--brand-bright);
+  animation: gear-spin-cw 2.2s linear infinite;
+}
+.loading-gears .ic:last-child {
+  width: 26px; height: 26px; bottom: 1px; right: 1px;
+  color: var(--brand);
+  animation: gear-spin-ccw 1.5s linear infinite;
+}
+.loading p { margin: 0; font-size: .86rem; font-weight: 600; }
+
+.loading-inline {
+  display: inline-flex; align-items: center; gap: 9px;
+  color: var(--muted); font-size: .86rem; font-weight: 600;
+}
+.loading-inline .ic {
+  width: 18px; height: 18px; color: var(--brand-bright);
+  animation: gear-spin-cw 1.6s linear infinite;
+}
+
+@keyframes gear-spin-cw { to { transform: rotate(360deg); } }
+@keyframes gear-spin-ccw { to { transform: rotate(-360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .loading-gears .ic, .loading-inline .ic { animation: none; }
+}
 
 .section { margin-bottom: 32px; }
 

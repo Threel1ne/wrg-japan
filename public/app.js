@@ -44,6 +44,21 @@ function icon(name, cls = '') {
   return `<svg class="ic ${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 }
 
+/** Full-section loading state — two gears (from the WRG mark) turning
+    against each other, in place of a plain "loading…" line. */
+function loadingBlock(text = 'กำลังโหลด…') {
+  return `<div class="loading">
+    <div class="loading-gears">${icon('gear')}${icon('gear')}</div>
+    <p>${esc(text)}</p>
+  </div>`;
+}
+
+/** Smaller single-gear version for loading states inside an existing card
+    (a file list refreshing, etc.) rather than a whole section. */
+function loadingInline(text = 'กำลังโหลด…') {
+  return `<span class="loading-inline">${icon('gear')}${esc(text)}</span>`;
+}
+
 async function api(method, path, body) {
   const res = await fetch(path, {
     method,
@@ -108,6 +123,7 @@ let filesListing = null;   // { folders, files } for filesPath, or null while (r
 let verifyUnlocked = null; // full lookup result (name, team, profile, …) once the DOB check passes
 let verifyDob = '';        // the DOB that unlocked it — resent on files-* calls (there's no session)
 let verifyError = '';      // error from the last failed DOB check, shown inline
+let verifyLoading = false; // a lookup request is in flight — show a spinner, not a dead form
 let verifyFiles = null;    // this person's own documents, or null while (re)loading
 let verifyPhotoUrl = null; // signed URL for their profile photo, or null if none/not loaded yet
 let personView = null;      // { teamKey, memberIndex } — admin's full-page view of one person (view === 'person')
@@ -638,9 +654,11 @@ function renderVerify() {
       <form id="verify-dob-form" class="card verify-detail">
         <label for="verify-dob">วันเกิดของคุณ</label>
         <input type="text" id="verify-dob" class="verify-select" placeholder="วว/ดด/ปปปป"
-          pattern="\\d{1,2}/\\d{1,2}/\\d{4}" required>
+          pattern="\\d{1,2}/\\d{1,2}/\\d{4}" required${verifyLoading ? ' disabled' : ''}>
         ${verifyError ? `<p class="error" style="margin-top:8px">${esc(verifyError)}</p>` : ''}
-        <button type="submit" class="btn primary" style="margin-top:14px">${icon('shield')}ค้นหา</button>
+        ${verifyLoading
+          ? `<div style="margin-top:14px">${loadingInline('กำลังค้นหา…')}</div>`
+          : `<button type="submit" class="btn primary" style="margin-top:14px">${icon('shield')}ค้นหา</button>`}
       </form>`;
   } else {
     const v = verifyUnlocked;
@@ -656,7 +674,7 @@ function renderVerify() {
     const first = v.teams[0];
 
     const filesHtml = verifyFiles === null
-      ? '<p class="muted" style="margin-top:10px">กำลังโหลด…</p>'
+      ? `<p style="margin-top:10px">${loadingInline()}</p>`
       : !verifyFiles.length
         ? '<p class="muted" style="margin-top:10px">ยังไม่มีเอกสาร</p>'
         : `<div class="files-browser">${verifyFiles.map((f) => `
@@ -1127,7 +1145,7 @@ function renderPersonPage() {
   const p = mb.profile || {};
 
   const filesHtml = personFilesList === null
-    ? '<p class="muted">กำลังโหลด…</p>'
+    ? `<p>${loadingInline()}</p>`
     : !personFilesList.length
       ? '<p class="muted">ยังไม่มีไฟล์</p>'
       : `<div class="files-browser">${personFilesList.map((f) => `
@@ -1221,7 +1239,7 @@ function renderFiles() {
     return `
       <div class="section">
         <div class="section-head"><h2>${icon('folder')}ไฟล์เอกสาร</h2></div>
-        <div class="loading">กำลังโหลด…</div>
+        ${loadingBlock()}
       </div>`;
   }
 
@@ -1836,6 +1854,7 @@ el('app').addEventListener('click', async (e) => {
     verifyError = '';
     verifyFiles = null;
     verifyPhotoUrl = null;
+    verifyLoading = false;
     render();
     return;
   }
@@ -2081,6 +2100,9 @@ el('app').addEventListener('submit', async (e) => {
       verifyError = 'รูปแบบวันเกิดไม่ถูกต้อง — ใช้ วว/ดด/ปปปป';
       return render();
     }
+    verifyLoading = true;
+    verifyError = '';
+    render();
     try {
       const res = await api('POST', '/api/verify', { op: 'lookup', dob });
       verifyUnlocked = {
@@ -2092,13 +2114,13 @@ el('app').addEventListener('submit', async (e) => {
       verifyError = '';
       verifyFiles = null;
       verifyPhotoUrl = null;
-      render();
       loadVerifyFiles();
       if (res.photoName) loadVerifyPhoto();
     } catch (ex) {
       verifyError = ex.message;
-      render();
     }
+    verifyLoading = false;
+    render();
     return;
   }
 
