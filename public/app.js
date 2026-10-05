@@ -115,12 +115,58 @@ let personFilesList = null; // that person's documents, or null while (re)loadin
 let personPhotoUrl = null;  // signed URL for their profile photo, or null if none/not loaded yet
 const SEEN_KEY = 'wrg2026.seen.v1';
 
-// A shared link like "?verify=1" (or "?view=verify") opens straight into the
-// self-verification tab instead of the overview — no login needed.
+/* --------------------------------------------------------------- routing */
+// Every tab is a real URL (/timeline, /files, …) so any page can be shared
+// directly — handled entirely client-side (no page reload): setView() pushes
+// a History entry, popstate (back/forward) reads it back. The server side
+// (vercel.json rewrites / server.js's static-file fallback) just hands every
+// unknown path the same index.html shell so this router can take over.
+
+/** view -> path. Team keys (e.g. "soccer4x4") already double as view names,
+    so they don't need a special case — only "overview" and "person" do. */
+function pathForView(v) {
+  if (v === 'overview') return '/';
+  if (v === 'person' && personView) return `/person/${personView.teamKey}/${personView.memberIndex}`;
+  if (v === 'files' && filesPath) return `/files/${filesPath.split('/').map(encodeURIComponent).join('/')}`;
+  return `/${v}`;
+}
+
+/** path -> { view, personView?, filesPath? }, or null if it doesn't look
+    like a route at all (e.g. a static asset request that somehow reached
+    here). Anything else is handed to render()'s existing fallback
+    (state.teams[view] ? … : renderOverview()), so an unknown name just
+    lands safely on the overview instead of needing a hardcoded whitelist
+    here. */
+function viewFromPath(pathname) {
+  const segs = pathname.split('/').filter(Boolean);
+  if (!segs.length) return { view: 'overview' };
+  if (segs[0] === 'person' && segs.length === 3 && Number.isInteger(Number(segs[2]))) {
+    return { view: 'person', personView: { teamKey: segs[1], memberIndex: Number(segs[2]) } };
+  }
+  if (segs[0] === 'files' && segs.length > 1) {
+    return { view: 'files', filesPath: segs.slice(1).map(decodeURIComponent).join('/') };
+  }
+  return { view: segs[0] };
+}
+
 {
+  const parsed = viewFromPath(location.pathname);
+  view = parsed.view;
+  if (parsed.personView) personView = parsed.personView;
+  if (parsed.filesPath !== undefined) filesPath = parsed.filesPath;
+  // Back-compat with the old "?verify=1" / "?view=verify" shared links.
   const qp = new URLSearchParams(location.search);
   if (qp.get('verify') === '1' || qp.get('view') === 'verify') view = 'verify';
 }
+
+window.addEventListener('popstate', () => {
+  const parsed = viewFromPath(location.pathname);
+  view = parsed.view;
+  if (parsed.personView) personView = parsed.personView;
+  filesPath = parsed.filesPath !== undefined ? parsed.filesPath : '';
+  filesListing = null;
+  render();
+});
 
 const TEAM_STYLE = {
   ballfighting: { icon: 'shield', color: 'var(--ball)',   tint: 'var(--ball-tint)',   chip: 'team-ball' },
@@ -1140,6 +1186,8 @@ function renderPersonPage() {
 function filesNavigate(newPath) {
   filesPath = newPath;
   filesListing = null;
+  const path = pathForView('files');
+  if (location.pathname !== path) history.pushState({ view: 'files', filesPath: newPath }, '', path);
   render();
 }
 
@@ -1278,6 +1326,8 @@ function render() {
 function setView(next) {
   if (next === 'files' && view !== 'files') { filesPath = ''; filesListing = null; }
   view = next;
+  const path = pathForView(next);
+  if (location.pathname !== path) history.pushState({ view: next }, '', path);
   render();
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (next === 'updates') {
@@ -1312,6 +1362,17 @@ async function loadState({ notify = false } = {}) {
   state = next;
 
   if (firstLoad && !localStorage.getItem(SEEN_KEY)) markAllSeen(); // don't flood a first-time visitor
+
+  // A direct link straight into the admin person page (e.g. a bookmark or
+  // page refresh) skips goToPerson(), so its photo/file list never got
+  // kicked off — load them now that state (and therefore state.admin) exists.
+  if (firstLoad && view === 'person' && personView && state.admin) {
+    const member = state.teams[personView.teamKey]?.members[personView.memberIndex];
+    if (member) {
+      loadPersonFilesList();
+      if (member.photoName) loadPersonPhoto();
+    }
+  }
 
   if (notify && prev) {
     const fresh = state.announcements.filter((a) => prev.get(a.id) !== a.updatedAt);
@@ -1817,7 +1878,7 @@ el('app').addEventListener('click', async (e) => {
   }
 
   if (t.hasAttribute('data-copy-verify-link')) {
-    const link = `${location.origin}${location.pathname}?verify=1`;
+    const link = `${location.origin}/verify`;
     try {
       await navigator.clipboard.writeText(link);
       toast('คัดลอกลิงก์แล้ว — ส่งให้สมาชิกทีมได้เลย', { icon: 'check' });
@@ -2073,7 +2134,7 @@ el('app').addEventListener('submit', async (e) => {
 (() => {
   const img = el('brand-logo');
   const mark = el('brand-mark');
-  const candidates = ['logo.svg', 'logo.png'];
+  const candidates = ['/logo.svg', '/logo.png'];
   let i = 0;
 
   const tryNext = () => {
